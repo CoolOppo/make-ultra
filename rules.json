@@ -1,1 +1,1 @@
-[{"pattern":"**/*.rs","new_extension":".exe"}]
+[{"pattern":"\\.r[s","new_extension":".exe"}]
