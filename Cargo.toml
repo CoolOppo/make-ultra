@@ -7,11 +7,11 @@ edition = "2018"
 [dependencies]
 serde = "1.0"
 serde_derive = "1.0"
-serde_json = "1.0"
-toml = "*"
+serde_regex = "0.3"
+toml = "0.4"
 walkdir = "2"
 regex = "1"
-ron = "*"
+rayon = "1"
 
 [profile.release]
 lto = true
