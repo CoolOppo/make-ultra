@@ -12,9 +12,9 @@ use std::error::Error;
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
-use std::process::Command;
 use walkdir::WalkDir;
 
+mod file;
 mod file_store;
 mod rule;
 
@@ -49,13 +49,16 @@ fn main() {
         let rule = file.rule.unwrap();
         rayon::scope(|s| {
             s.spawn(|_| {
-                let command = (rule.command.replace("$i", &file.path))
-                    .replace("$o", &rule.from.replace_all(&file.path, &*rule.to));
+                let fuck_rust = &String::from(rule.from.replace_all(&file.path, &*rule.to));
+                let out_file/*not really?*/ = file::File {
+                    path: &Path::new(fuck_rust),
+                    rule: file.rule.unwrap()
+                };
+                let command =
+                    (rule.command.replace("$i", &file.path)).replace("$o", &out_file.path.to_string_lossy());
                 println!("{}", command);
-                Command::new("cmd")
-                    .args(&["/C", &command])
-                    .output()
-                    .expect("failed to execute process");
+                // TODO: Go fuck yourself
+                
             });
         });
     }
