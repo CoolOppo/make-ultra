@@ -16,6 +16,7 @@ use std::io::Write;
 use std::path::Path;
 
 use walkdir::WalkDir;
+use std::process::Command;
 
 mod file;
 mod file_store;
@@ -26,6 +27,7 @@ fn main() {
     let mut files: Vec<file_store::File> = Vec::new();
     for entry in WalkDir::new(".").into_iter().filter_map(|e| e.ok()) {
         let path = String::from(entry.path().to_string_lossy());
+
         for rule in rules.values() {
             if rule.from.is_match(&path) {
                 let mut is_top_level = true;
@@ -66,15 +68,20 @@ fn main() {
 fn runthi(file: file::File) {
     rayon::scope(|s| {
         s.spawn(|_| {
+            let out_path = &String::from(file.rule.from.replace_all(&file.path.to_string_lossy(), &*file.rule.to));
+
+            let command = (file.rule.command.replace("$i", &file.path.to_string_lossy()))
+                .replace("$o", out_path);
+            println!("{}", command);
+            Command::new("cmd")
+                .args(&["/C", &command])
+                .output()
+                .expect("failed to execute process");
             for x in file.rule.next.values() {
-                let out_path = &String::from(file.rule.from.replace_all(&file.path.to_string_lossy(), &*file.rule.to));
                 let out_file = file::File {
                     path: &Path::new(out_path),
                     rule: x,
                 };
-                let command = (file.rule.command.replace("$i", &file.path.to_string_lossy()))
-                    .replace("$o", &out_file.path.to_string_lossy());
-                println!("{}", command);
                 runthi(out_file);
             }
         });

@@ -13,6 +13,7 @@ pub struct Rule {
     pub to: String,
     pub command: String,
     #[serde(default)]
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
     pub next: HashMap<String, Rule>,
 }
 
@@ -51,7 +52,7 @@ mod tests {
                 from: Regex::new("(?P<name>.*)\\.min\\.js$").unwrap(),
                 to: String::from("$name.min.js.gz"),
                 command: String::from("wsl gzip -k $i"),
-                next: None,
+                next: hashmap!{},
             }},
         }};
         File::create("rules.toml")
