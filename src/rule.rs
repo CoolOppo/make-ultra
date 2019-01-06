@@ -1,9 +1,10 @@
-use regex::Regex;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
+
+use regex::Regex;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Rule {
@@ -11,7 +12,8 @@ pub struct Rule {
     pub from: Regex,
     pub to: String,
     pub command: String,
-    pub next: Option<Vec<Rule>>
+    #[serde(default)]
+    pub next: HashMap<String, Rule>,
 }
 
 pub fn read_rules() -> HashMap<String, Rule> {
@@ -35,25 +37,23 @@ mod tests {
     #[test]
     fn generate_rules() {
         use crate::rule::Rule;
+        use regex::Regex;
         use std::collections::HashMap;
         use std::fs::File;
         use std::io::Write;
-        use regex::Regex;
-        let mut rules = HashMap::<String, Rule>::new();
-        rules.insert(
-            String::from("Rust Files"),
-            Rule {
-                from: Regex::new("(?P<name>.*)\\.js$").unwrap(),
-                to: String::from("$name.min.js"),
-                command: String::from("terser $i -o $o"),
-                next: Some(vec![Rule {
-                    from: Regex::new("(?P<name>.*)\\.min\\.js$").unwrap(),
-                    to: String::from("$name.min.js.gz"),
-                    command: String::from("wsl gzip -k $i"),
-                    next: None,
-                }]),
-            },
-        );
+        let mut rules = hashmap! {
+        String::from("minify")=>
+        Rule {
+            from: Regex::new("(?P<name>.*)\\.js$").unwrap(),
+            to: String::from("$name.min.js"),
+            command: String::from("terser $i -o $o"),
+            next: hashmap! {String::from("gzip")=>Rule {
+                from: Regex::new("(?P<name>.*)\\.min\\.js$").unwrap(),
+                to: String::from("$name.min.js.gz"),
+                command: String::from("wsl gzip -k $i"),
+                next: None,
+            }},
+        }};
         File::create("rules.toml")
             .unwrap()
             .write_all(toml::to_string_pretty(&rules).unwrap().as_bytes())
