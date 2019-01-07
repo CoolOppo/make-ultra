@@ -20,6 +20,7 @@ pub struct Rule {
     #[serde(default)]
     #[serde(skip_serializing_if = "HashMap::is_empty")]
     pub next: HashMap<String, Rule>,
+
 }
 
 impl Rule {
@@ -34,9 +35,23 @@ impl Rule {
                     return false;
                 }
             }
+            let x = &self.next;
+            for depender in x.values() {
+                if depender.from.is_match(&path) {
+                    return false;
+                }
+            }
             return true;
         }
         false
+    }
+}
+
+impl PartialEq for Rule{
+    fn eq(&self, other: &Rule)->bool{
+        self.from.as_str() == other.from.as_str() &&
+        self.to == other.to &&
+        self.command == other.command
     }
 }
 

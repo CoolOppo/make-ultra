@@ -1,22 +1,22 @@
 #![warn(clippy::all)]
+extern crate ignore;
 #[macro_use]
 extern crate maplit;
-
 extern crate rayon;
 extern crate regex;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
-extern crate ignore;
 extern crate serde_regex;
 extern crate toml;
 
 use std::collections::HashMap;
 use std::process::Command;
+use std::sync::mpsc::channel;
 
 use ignore::WalkBuilder;
 use rayon::prelude::*;
-use std::sync::mpsc::channel;
+
 mod file;
 mod file_store;
 mod rule;
@@ -24,9 +24,9 @@ mod rule;
 fn main() {
     let rules = rule::read_rules();
     let mut files: Vec<file::File> = Vec::new();
-    let walk_builder = WalkBuilder::new("./");
+    let mut walk_builder = WalkBuilder::new("./");
     let (tx, rx) = channel();
-    walk_builder.build_parallel().run(move || {
+    walk_builder.standard_filters(false).build_parallel().run(move || {
         let tx2 = tx.clone();
         Box::new(move |entry_gg| {
             let entry = match entry_gg {
@@ -44,20 +44,10 @@ fn main() {
     for path in rx.iter() {
         for rule in rules.values() {
             if rule.does_match(&path) {
-                let mut is_top_level = true;
-                let x = &rule.next;
-                for depender in x.values() {
-                    if depender.from.is_match(&path) {
-                        is_top_level = false;
-                    }
-                }
-
-                if is_top_level {
-                    files.push(file::File {
-                        path: String::from(&*path),
-                        rule: &rule,
-                    });
-                }
+                files.push(file::File {
+                    path: String::from(&*path),
+                    rule: &rule,
+                });
             }
         }
     }
@@ -84,19 +74,24 @@ fn runthi(file: &file::File, rules: &HashMap<String, rule::Rule>) {
 
     let command = (file.rule.command.replace("$i", &file.path)).replace("$o", &out_path);
     println!("{}", command);
-    Command::new("cmd")
-        .args(&["/C", &command])
-        .output()
-        .expect("failed to execute process");
-    if !file.rule.next.is_empty() {
-        file.rule.next.par_iter().for_each(|(_, x)| {
-            let out_file = file::File {
-                path: out_path.clone(),
-                rule: x,
-            };
-            runthi(&out_file, rules);
-        });
-    } /*else {
-          for x in rules.values() {}
-      }*/
+//    Command::new("cmd")
+//        .args(&["/C", &command])
+//        .output()
+//        .expect("failed to execute process");
+    file.rule.next.par_iter().for_each(|(_, x)| {
+        let out_file = file::File {
+            path: out_path.clone(),
+            rule: x,
+        };
+        runthi(&out_file, rules);
+    });
+    rules.par_iter().filter(|(_, rule)| {
+        rule != &file.rule && rule.does_match(&file.path)
+    }).map(|(_, rule)| rule).for_each(|x| {
+        let out_file = file::File {
+            path: out_path.clone(),
+            rule: x,
+        };
+        runthi(&out_file, rules);
+    });
 }
