@@ -6,15 +6,38 @@ use std::path::Path;
 
 use regex::Regex;
 
+use crate::file;
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Rule {
     #[serde(with = "serde_regex")]
     pub from: Regex,
     pub to: String,
+    #[serde(with = "serde_regex")]
+    #[serde(default)]
+    pub exclude: Option<Regex>,
     pub command: String,
     #[serde(default)]
     #[serde(skip_serializing_if = "HashMap::is_empty")]
     pub next: HashMap<String, Rule>,
+}
+
+impl Rule {
+    pub fn get_output(&self, file: &file::File) -> String {
+        String::from(file.rule.from.replace_all(&file.path, &*file.rule.to))
+    }
+
+    pub fn does_match(&self, path: &str) -> bool {
+        if self.from.is_match(path) {
+            if let Some(x) = &self.exclude {
+                if x.is_match(path) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        false
+    }
 }
 
 pub fn read_rules() -> HashMap<String, Rule> {
@@ -39,21 +62,37 @@ mod tests {
     fn generate_rules() {
         use crate::rule::Rule;
         use regex::Regex;
-        use std::collections::HashMap;
         use std::fs::File;
         use std::io::Write;
-        let mut rules = hashmap! {
-        String::from("minify")=>
-        Rule {
-            from: Regex::new("(?P<name>.*)\\.js$").unwrap(),
-            to: String::from("$name.min.js"),
-            command: String::from("terser $i -o $o"),
-            next: hashmap! {String::from("gzip")=>Rule {
-                from: Regex::new("(?P<name>.*)\\.min\\.js$").unwrap(),
-                to: String::from("$name.min.js.gz"),
-                command: String::from("wsl gzip -k $i"),
-                next: hashmap!{},
-            }},
+        let rules = hashmap! {
+            String::from("minify")=>
+            Rule {
+                from: Regex::new("(?P<name>.*)\\.js$").unwrap(),
+                to: String::from("$name.min.js"),
+                command: String::from("terser $i -o $o"),
+                exclude: Some(Regex::new("\\.min\\.js$").unwrap()),
+                next: hashmap! {
+                    String::from("gzip") => Rule {
+                        from: Regex::new("(?P<name>.*)\\.min\\.js$").unwrap(),
+                        to: String::from("$name.min.js.gz"),
+                        command: String::from("zopfli $i"),
+                        exclude: None,
+                        next: hashmap!{},
+                    },
+                    String::from("brotli") => Rule {
+                        from: Regex::new("(?P<name>.*)\\.min\\.js$").unwrap(),
+                        to: String::from("$name.min.js.br"),
+                        command: String::from("brotli -f $i"),
+                        exclude: None,
+                        next: hashmap!{},
+                    },
+        }},
+        String::from("rule2")=>Rule{
+            from: Regex::new("test").unwrap(),
+            to: String::from("yes"),
+            command: String::from("h"),
+            exclude: None,
+            next: hashmap!{}
         }};
         File::create("rules.toml")
             .unwrap()
