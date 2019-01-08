@@ -26,21 +26,24 @@ fn main() {
     let mut files: Vec<file::File> = Vec::new();
     let mut walk_builder = WalkBuilder::new("./");
     let (tx, rx) = channel();
-    walk_builder.standard_filters(false).build_parallel().run(move || {
-        let tx2 = tx.clone();
-        Box::new(move |entry_gg| {
-            let entry = match entry_gg {
-                Err(_e) => {
-                    return ignore::WalkState::Continue;
-                }
-                Ok(e) => e,
-            };
-            let path = entry.path().to_owned();
-            let p = String::from(path.to_string_lossy());
-            tx2.send(p).unwrap();
-            ignore::WalkState::Continue
-        })
-    });
+    walk_builder
+        .standard_filters(false)
+        .build_parallel()
+        .run(move || {
+            let tx2 = tx.clone();
+            Box::new(move |entry| {
+                let entry = match entry {
+                    Err(_e) => {
+                        return ignore::WalkState::Continue;
+                    }
+                    Ok(e) => e,
+                };
+                let path = entry.path().to_owned();
+                let p = String::from(path.to_string_lossy());
+                tx2.send(p).unwrap();
+                ignore::WalkState::Continue
+            })
+        });
     for path in rx.iter() {
         for rule in rules.values() {
             if rule.does_match(&path) {
@@ -51,7 +54,7 @@ fn main() {
             }
         }
     }
-
+    // let (file_tx, file_rx) = channel();
     files.par_iter_mut().for_each(|file| {
         runthi(file, &rules);
     });
@@ -74,10 +77,10 @@ fn runthi(file: &file::File, rules: &HashMap<String, rule::Rule>) {
 
     let command = (file.rule.command.replace("$i", &file.path)).replace("$o", &out_path);
     println!("{}", command);
-//    Command::new("cmd")
-//        .args(&["/C", &command])
-//        .output()
-//        .expect("failed to execute process");
+    //    Command::new("cmd")
+    //        .args(&["/C", &command])
+    //        .output()
+    //        .expect("failed to execute process");
     file.rule.next.par_iter().for_each(|(_, x)| {
         let out_file = file::File {
             path: out_path.clone(),
@@ -85,13 +88,15 @@ fn runthi(file: &file::File, rules: &HashMap<String, rule::Rule>) {
         };
         runthi(&out_file, rules);
     });
-    rules.par_iter().filter(|(_, rule)| {
-        rule != &file.rule && rule.does_match(&file.path)
-    }).map(|(_, rule)| rule).for_each(|x| {
-        let out_file = file::File {
-            path: out_path.clone(),
-            rule: x,
-        };
-        runthi(&out_file, rules);
-    });
+    rules
+        .par_iter()
+        .filter(|(_, rule)| rule != &file.rule && rule.does_match(&file.path))
+        .map(|(_, rule)| rule)
+        .for_each(|x| {
+            let out_file = file::File {
+                path: out_path.clone(),
+                rule: x,
+            };
+            runthi(&out_file, rules);
+        });
 }
