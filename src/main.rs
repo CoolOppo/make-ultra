@@ -1,5 +1,7 @@
 #![warn(clippy::all)]
 extern crate ignore;
+
+#[allow(unused_imports)] // necessary because the warning is WRONG!
 #[macro_use]
 extern crate maplit;
 extern crate rayon;
@@ -11,7 +13,7 @@ extern crate serde_regex;
 extern crate toml;
 
 use std::collections::HashMap;
-use std::process::Command;
+// use std::process::Command;
 use std::sync::mpsc::channel;
 
 use ignore::WalkBuilder;
