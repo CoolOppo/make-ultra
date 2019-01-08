@@ -75,6 +75,7 @@ pub fn read_rules() -> HashMap<String, Rule> {
 mod tests {
     #[test]
     fn generate_rules() {
+        #![allow(clippy::trivial_regex)]
         use crate::rule::Rule;
         use regex::Regex;
         use std::fs::File;
