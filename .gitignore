@@ -1,3 +1,9 @@
 /target
 **/*.rs.bk
 .idea/
+# used for testing:
+chat.js
+chat.min.js
+chat.min.js.gz
+chat.min.js.br
+rules.toml
