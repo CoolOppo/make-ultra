@@ -7,3 +7,5 @@ chat.min.js
 chat.min.js.gz
 chat.min.js.br
 rules.toml
+test.dot
+/.vscode
