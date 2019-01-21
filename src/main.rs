@@ -16,10 +16,10 @@ extern crate petgraph;
 extern crate serde_regex;
 extern crate toml;
 use ignore::WalkBuilder;
-use parking_lot::Mutex;
+use parking_lot::{Mutex, RwLock};
 use petgraph::stable_graph::StableDiGraph;
+use petgraph::visit::Topo;
 use std::collections::HashMap;
-
 use std::path::Path;
 use std::sync::mpsc::channel;
 use std::sync::Arc;
@@ -34,8 +34,8 @@ lazy_static! {
         rule::read_rules();
     static ref FILES: Mutex<HashMap<Arc<String>, petgraph::prelude::NodeIndex>> =
         Mutex::new(HashMap::new());
-    static ref FILE_GRAPH: Mutex<StableDiGraph<Arc<String>, &'static rule::Rule>> =
-        Mutex::new(StableDiGraph::new());
+    static ref FILE_GRAPH: RwLock<StableDiGraph<Arc<String>, &'static rule::Rule>> =
+        RwLock::new(StableDiGraph::new());
 }
 
 fn main() {
@@ -70,11 +70,31 @@ fn main() {
         use petgraph::dot::{Config, Dot};
         use std::fs::File;
         use std::io::Write;
-        let fg = FILE_GRAPH.lock();
+        let fg = FILE_GRAPH.read();
 
         let mut file = File::create(Path::new("test.dot")).unwrap();
         file.write_all(format!("{:?}", Dot::with_config(&*fg, &[Config::EdgeNoLabel])).as_bytes())
             .unwrap();
+    }
+    {
+        let mut topo_visitor: petgraph::visit::Topo<petgraph::prelude::NodeIndex, _>;
+        {
+            let g = FILE_GRAPH.read();
+            topo_visitor = Topo::new(&*g);
+        }
+        rayon::scope(move |s| {
+            let g = FILE_GRAPH.read();
+            while let Some(node) = topo_visitor.next(&*g) {
+                s.spawn(move |_| {
+                    let g = FILE_GRAPH.read();
+                    for edge in g.edges_directed(node, petgraph::Direction::Outgoing) {
+                        let command = (edge.weight().command.replace("$i", &*g[node]))
+                            .replace("$o", &*g[petgraph::visit::EdgeRef::target(&edge)]);
+                        println!("{}", command);
+                    }
+                });
+            }
+        });
     }
 }
 
@@ -90,10 +110,10 @@ fn generate_children(path: String) {
                     let mut should_update_children = false;
                     {
                         let mut files = FILES.lock();
-                        let mut file_graph = FILE_GRAPH.lock();
                         let node = if let Some(node_index) = files.get(path) {
                             *node_index
                         } else {
+                            let mut file_graph = FILE_GRAPH.write();
                             let path = Arc::new(path.clone());
                             let file_node = file_graph.add_node(Arc::clone(&path));
                             files.insert(Arc::clone(&path), file_node);
@@ -105,6 +125,7 @@ fn generate_children(path: String) {
                             *node_index
                         } else {
                             should_update_children = true;
+                            let mut file_graph = FILE_GRAPH.write();
                             let new_file = Arc::new(new_file.clone());
                             let file_node = file_graph.add_node(Arc::clone(&new_file));
                             files.insert(Arc::clone(&new_file), file_node);
@@ -122,6 +143,8 @@ fn generate_children(path: String) {
         }
     });
 }
+
+fn run_commands(node: petgraph::prelude::NodeIndex) {}
 
 // fn make_children<'a>(
 //     file: Arc<file::File>,
