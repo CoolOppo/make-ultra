@@ -132,7 +132,10 @@ fn generate_children(path: String) {
                             file_node
                         };
 
-                        file_graph.update_edge(node, new_file_node, rule);
+                        {
+                            let mut file_graph = FILE_GRAPH.write();
+                            file_graph.update_edge(node, new_file_node, rule);
+                        }
                     }
 
                     if should_update_children {
