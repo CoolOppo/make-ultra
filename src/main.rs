@@ -1,4 +1,5 @@
 #![warn(clippy::all)]
+#![allow(dead_code, unused_variables)]
 
 extern crate ignore;
 #[macro_use]
