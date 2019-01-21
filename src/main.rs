@@ -96,11 +96,18 @@ fn main() {
     rayon::scope(move |s| {
         let g = FILE_GRAPH.read();
         for i in g.node_indices().filter(|n| {
+            let incoming_count = g
+                .neighbors_directed(*n, petgraph::Direction::Incoming)
+                .count();
             // Get all nodes with no inputs (roots)
-            g.neighbors_directed(*n, petgraph::Direction::Incoming)
-                .count()
-                == 0
+            (incoming_count == 0
+                || incoming_count == 1
+                    && g.neighbors_directed(*n, petgraph::Direction::Incoming)
+                        .next()
+                        .unwrap()
+                        == *n)
         }) {
+            println!("{}", g[i]);
             s.spawn(move |_| {
                 run_commands(i);
             });
@@ -110,6 +117,7 @@ fn main() {
 
 fn run_commands(node: petgraph::prelude::NodeIndex) {
     rayon::scope(move |_| {
+        use petgraph::visit::EdgeRef;
         use rayon::iter::ParallelBridge;
         use std::process::Command;
         let g = FILE_GRAPH.read();
@@ -141,11 +149,9 @@ fn run_commands(node: petgraph::prelude::NodeIndex) {
                         }
                     };
                 }
-                run_commands(
-                    *files
-                        .get(&*g[petgraph::visit::EdgeRef::target(&edge)])
-                        .unwrap(),
-                );
+                if edge.source() != edge.target() {
+                    run_commands(*files.get(&*g[edge.target()]).unwrap());
+                }
             });
     });
 }
@@ -173,10 +179,13 @@ fn generate_children(path: String) {
                         };
 
                         new_file = rule.get_output(&path);
+
                         let new_file_node = if let Some(node_index) = files.get(&new_file) {
                             *node_index
                         } else {
-                            should_update_children = true;
+                            if path != &new_file {
+                                should_update_children = true;
+                            }
                             let mut file_graph = FILE_GRAPH.write();
                             let new_file = Arc::new(new_file.clone());
                             let file_node = file_graph.add_node(Arc::clone(&new_file));
