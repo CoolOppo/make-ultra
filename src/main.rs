@@ -57,16 +57,15 @@ fn clap_setup() -> clap::ArgMatches<'static> {
 }
 
 fn main() {
-    let mut walk_builder = WalkBuilder::new(Path::new("."));
     let (tx, rx) = channel();
-    walk_builder
+    WalkBuilder::new(Path::new("."))
         .standard_filters(false)
         .build_parallel()
         .run(move || {
             let tx = tx.clone();
             Box::new(move |entry| {
                 let entry = match entry {
-                    Err(_e) => {
+                    Err(_) => {
                         return ignore::WalkState::Continue;
                     }
                     Ok(e) => e,
@@ -94,21 +93,19 @@ fn main() {
         file.write_all(format!("{:?}", Dot::with_config(&*fg, &[Config::EdgeNoLabel])).as_bytes())
             .unwrap();
     }
-    {
-        rayon::scope(move |s| {
-            let g = FILE_GRAPH.read();
-            for i in g.node_indices().filter(|n| {
-                // Get all nodes with no inputs (roots)
-                g.neighbors_directed(*n, petgraph::Direction::Incoming)
-                    .count()
-                    == 0
-            }) {
-                s.spawn(move |_| {
-                    run_commands(i);
-                });
-            }
-        });
-    }
+    rayon::scope(move |s| {
+        let g = FILE_GRAPH.read();
+        for i in g.node_indices().filter(|n| {
+            // Get all nodes with no inputs (roots)
+            g.neighbors_directed(*n, petgraph::Direction::Incoming)
+                .count()
+                == 0
+        }) {
+            s.spawn(move |_| {
+                run_commands(i);
+            });
+        }
+    });
 }
 
 fn run_commands(node: petgraph::prelude::NodeIndex) {
@@ -121,17 +118,28 @@ fn run_commands(node: petgraph::prelude::NodeIndex) {
             .for_each(|edge| {
                 let g = FILE_GRAPH.read();
                 let files = FILES.read();
-                let full_command = (edge.weight().command.replace("$i", &*g[node]))
+                let command = (edge.weight().command.replace("$i", &*g[node]))
                     .replace("$o", &*g[petgraph::visit::EdgeRef::target(&edge)]);
-                println!("{}", full_command);
+                println!("{}", command);
                 if !MATCHES.is_present("dry_run") {
-                    let first_space = full_command.find(' ').unwrap();
-                    let command = &full_command[..first_space];
-                    let args: Vec<&str> = full_command[first_space + 1..].split(' ').collect();
-                    Command::new(command)
-                        .args(&args)
-                        .status()
-                        .unwrap_or_else(|_| panic!("Failed to execute {}", full_command));
+                    if cfg!(target_os = "windows") {
+                        let out = Command::new("cmd")
+                            .args(&["/C", &command])
+                            .output()
+                            .unwrap_or_else(|_| panic!("Failed to execute {}", command));
+                        if !out.stderr.is_empty() {
+                            println!("{}", std::str::from_utf8(&out.stderr).unwrap());
+                        }
+                    } else {
+                        let out = Command::new("sh")
+                            .arg("-c")
+                            .arg(&command)
+                            .output()
+                            .unwrap_or_else(|_| panic!("Failed to execute {}", command));
+                        if !out.stderr.is_empty() {
+                            println!("{}", std::str::from_utf8(&out.stderr).unwrap());
+                        }
+                    };
                 }
                 run_commands(
                     *files

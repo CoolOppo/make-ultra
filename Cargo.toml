@@ -18,5 +18,5 @@ petgraph = "0.4.13"
 parking_lot = {version = "0.7.1", features = ["nightly"]}
 lazy_static = "*"
 [profile.release]
-lto = 'thin'
+lto = true
 panic = 'abort'
