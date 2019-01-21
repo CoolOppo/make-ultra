@@ -6,8 +6,6 @@ use std::path::Path;
 
 use regex::Regex;
 
-use crate::file;
-
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Rule {
     #[serde(with = "serde_regex")]
@@ -20,12 +18,11 @@ pub struct Rule {
     #[serde(default)]
     #[serde(skip_serializing_if = "HashMap::is_empty")]
     pub next: HashMap<String, Rule>,
-
 }
 
 impl Rule {
-    pub fn get_output(&self, file: &file::File) -> String {
-        String::from(file.rule.from.replace_all(&file.path, &*file.rule.to))
+    pub fn get_output(&self, path: &str) -> String {
+        String::from(self.from.replace_all(path, &*self.to))
     }
 
     pub fn does_match(&self, path: &str) -> bool {
@@ -47,11 +44,11 @@ impl Rule {
     }
 }
 
-impl PartialEq for Rule{
-    fn eq(&self, other: &Rule)->bool{
-        self.from.as_str() == other.from.as_str() &&
-        self.to == other.to &&
-        self.command == other.command
+impl PartialEq for Rule {
+    fn eq(&self, other: &Rule) -> bool {
+        self.from.as_str() == other.from.as_str()
+            && self.to == other.to
+            && self.command == other.command
     }
 }
 
@@ -81,8 +78,7 @@ mod tests {
         use std::fs::File;
         use std::io::Write;
         let rules = hashmap! {
-            String::from("minify")=>
-            Rule {
+            String::from("minify")=> Rule {
                 from: Regex::new("(?P<name>.*)\\.js$").unwrap(),
                 to: String::from("$name.min.js"),
                 command: String::from("terser $i -o $o"),
@@ -95,21 +91,16 @@ mod tests {
                         exclude: None,
                         next: hashmap!{},
                     },
-                    String::from("brotli") => Rule {
-                        from: Regex::new("(?P<name>.*)\\.min\\.js$").unwrap(),
-                        to: String::from("$name.min.js.br"),
-                        command: String::from("brotli -f $i"),
-                        exclude: None,
-                        next: hashmap!{},
-                    },
-        }},
-        String::from("rule2")=>Rule{
-            from: Regex::new("test").unwrap(),
-            to: String::from("yes"),
-            command: String::from("h"),
-            exclude: None,
-            next: hashmap!{}
-        }};
+                }
+            },
+            String::from("brotli") => Rule {
+                from: Regex::new("(?P<name>.*)\\.min\\.js$").unwrap(),
+                to: String::from("$name.min.js.br"),
+                command: String::from("brotli -f $i"),
+                exclude: None,
+                next: hashmap!{},
+            }
+        };
         File::create("rules.toml")
             .unwrap()
             .write_all(toml::to_string_pretty(&rules).unwrap().as_bytes())

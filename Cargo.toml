@@ -13,7 +13,9 @@ ignore = "0.4"
 regex = "1"
 rayon = "1"
 maplit = "1.0.1"
-
+petgraph = "0.4.13"
+parking_lot = {version = "0.7.1", features = ["nightly"]}
+lazy_static = "*"
 [profile.release]
 lto = 'thin'
 panic = 'abort'
