@@ -1,5 +1,4 @@
 #![warn(clippy::all)]
-#![allow(dead_code, unused_variables, unused_assignments, unused_imports)]
 
 extern crate clap;
 extern crate ignore;
@@ -20,9 +19,8 @@ extern crate toml;
 
 use clap::{App, Arg};
 use ignore::WalkBuilder;
-use parking_lot::{Mutex, RwLock};
+use parking_lot::RwLock;
 use petgraph::stable_graph::StableDiGraph;
-use petgraph::visit::Topo;
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::path::Path;
@@ -97,13 +95,7 @@ fn main() {
             .unwrap();
     }
     {
-        let mut topo_visitor: petgraph::visit::Topo<petgraph::prelude::NodeIndex, _>;
-        {
-            let g = FILE_GRAPH.read();
-            topo_visitor = Topo::new(&*g);
-        }
         rayon::scope(move |s| {
-            use petgraph::visit::IntoNodeReferences;
             let g = FILE_GRAPH.read();
             for i in g.node_indices().filter(|n| {
                 // Get all nodes with no inputs (roots)
@@ -120,7 +112,7 @@ fn main() {
 }
 
 fn run_commands(node: petgraph::prelude::NodeIndex) {
-    rayon::scope(move |s| {
+    rayon::scope(move |_| {
         use rayon::iter::ParallelBridge;
         use std::process::Command;
         let g = FILE_GRAPH.read();
@@ -138,8 +130,8 @@ fn run_commands(node: petgraph::prelude::NodeIndex) {
                     let args: Vec<&str> = full_command[first_space + 1..].split(' ').collect();
                     Command::new(command)
                         .args(&args)
-                        .output()
-                        .expect("failed to execute process");
+                        .status()
+                        .unwrap_or_else(|_| panic!("Failed to execute {}", full_command));
                 }
                 run_commands(
                     *files
@@ -198,41 +190,3 @@ fn generate_children(path: String) {
         }
     });
 }
-
-// fn make_children<'a>(
-//     file: Arc<file::File>,
-//     rules: &'a HashMap<std::string::String, rule::Rule>,
-//     dag: Arc<Mutex<DiGraphMap<&'a str, ()>>>,
-// ) {
-//     let out_path = file.rule.get_output(&file);
-
-//     let command = (file.rule.command.replace("$i", &file.path)).replace("$o", &out_path);
-//     println!("{}", command);
-//     //    Command::new("cmd")
-//     //        .args(&["/C", &command])
-//     //        .output()
-//     //        .expect("failed to execute process");
-//     file.rule.next.par_iter().for_each(|(_, x)| {
-//         let out_file = Arc::new(file::File {
-//             path: out_path.clone(),
-//             rule: x,
-//         });
-//         let dagc = Arc::clone(&dag);
-//         {
-//             let mut dag2 = dagc.lock();
-//             // dag2.add_edge(file.path, "y", ());
-//         }
-//         make_children(out_file, rules, Arc::clone(&dag));
-//     });
-//     rules
-//         .par_iter()
-//         .filter(|(_, rule)| rule != &file.rule && rule.does_match(&file.path))
-//         .map(|(_, rule)| rule)
-//         .for_each(|x| {
-//             let out_file = Arc::new(file::File {
-//                 path: out_path.clone(),
-//                 rule: x,
-//             });
-//             make_children(out_file, rules, Arc::clone(&dag));
-//         });
-// }

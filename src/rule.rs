@@ -14,10 +14,7 @@ pub struct Rule {
     #[serde(with = "serde_regex")]
     #[serde(default)]
     pub exclude: Option<Regex>,
-    pub command: String,
-    #[serde(default)]
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
-    pub next: HashMap<String, Rule>,
+    pub command: String
 }
 
 impl Rule {
@@ -29,12 +26,6 @@ impl Rule {
         if self.from.is_match(path) {
             if let Some(x) = &self.exclude {
                 if x.is_match(path) {
-                    return false;
-                }
-            }
-            let x = &self.next;
-            for depender in x.values() {
-                if depender.from.is_match(&path) {
                     return false;
                 }
             }
@@ -83,22 +74,12 @@ mod tests {
                 to: String::from("$name.min.js"),
                 command: String::from("terser $i -o $o"),
                 exclude: Some(Regex::new("\\.min\\.js$").unwrap()),
-                next: hashmap! {
-                    String::from("gzip") => Rule {
-                        from: Regex::new("(?P<name>.*)\\.min\\.js$").unwrap(),
-                        to: String::from("$name.min.js.gz"),
-                        command: String::from("zopfli $i"),
-                        exclude: None,
-                        next: hashmap!{},
-                    },
-                }
             },
             String::from("brotli") => Rule {
                 from: Regex::new("(?P<name>.*)\\.min\\.js$").unwrap(),
                 to: String::from("$name.min.js.br"),
                 command: String::from("brotli -f $i"),
                 exclude: None,
-                next: hashmap!{},
             }
         };
         File::create("rules.toml")
