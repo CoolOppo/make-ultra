@@ -44,7 +44,8 @@ impl PartialEq for Rule {
 }
 
 pub fn read_rules() -> HashMap<String, Rule> {
-    let mut file = match File::open(Path::new("rules.toml")) {
+    let path = Path::new("rules.toml");
+    let mut file = match File::open(&path) {
         Err(_why) => panic!("couldn't open rule file"),
         Ok(file) => file,
     };
