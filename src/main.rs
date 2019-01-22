@@ -1,6 +1,7 @@
 #![warn(clippy::all)]
 
 extern crate clap;
+extern crate hashbrown;
 extern crate ignore;
 #[macro_use]
 extern crate lazy_static;
@@ -8,24 +9,26 @@ extern crate lazy_static;
 #[macro_use]
 extern crate maplit;
 extern crate parking_lot;
+extern crate petgraph;
 extern crate rayon;
 extern crate regex;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
-extern crate petgraph;
 extern crate serde_regex;
 extern crate toml;
 
+use std::path::Path;
+use std::sync::Arc;
+use std::sync::mpsc::channel;
+
 use clap::{App, Arg};
+use hashbrown::hash_map::HashMap;
 use ignore::WalkBuilder;
 use parking_lot::RwLock;
 use petgraph::stable_graph::StableDiGraph;
 use rayon::prelude::*;
-use std::collections::HashMap;
-use std::path::Path;
-use std::sync::mpsc::channel;
-use std::sync::Arc;
+
 mod rule;
 
 lazy_static! {
@@ -102,10 +105,10 @@ fn main() {
             // Get all nodes with no inputs (roots)
             (incoming_count == 0
                 || incoming_count == 1
-                    && g.neighbors_directed(*n, petgraph::Direction::Incoming)
-                        .next()
-                        .unwrap()
-                        == *n)
+                && g.neighbors_directed(*n, petgraph::Direction::Incoming)
+                .next()
+                .unwrap()
+                == *n)
         }) {
             println!("{}", g[i]);
             s.spawn(move |_| {

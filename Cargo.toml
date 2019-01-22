@@ -5,18 +5,18 @@ authors = ["CoolOppo <CoolOppo@users.noreply.github.com>"]
 edition = "2018"
 
 [dependencies]
-clap = "~2.32.0"
-serde = "1.0"
-serde_derive = "1.0"
-serde_regex = "0.3"
-toml = "0.4"
-ignore = "0.4"
-regex = "1"
-rayon = "1"
+clap = "2.32.0"
+hashbrown = {version = "0.1.8", features = ["nightly"]}
+ignore = "0.4.6"
+lazy_static = "1.2.0"
 maplit = "1.0.1"
-petgraph = "0.4.13"
 parking_lot = {version = "0.7.1", features = ["nightly"]}
-lazy_static = "*"
+petgraph = "0.4.13"
+rayon = "1.0.3"
+regex = "1.1.0"
+serde = "1.0.85"
+serde_derive = "1.0.85"
+serde_regex = "0.3.1"
+toml = "0.4.10"
 [profile.release]
 lto = 'thin'
-panic = 'abort'

@@ -14,7 +14,7 @@ pub struct Rule {
     #[serde(with = "serde_regex")]
     #[serde(default)]
     pub exclude: Option<Regex>,
-    pub command: String
+    pub command: String,
 }
 
 impl Rule {
@@ -44,9 +44,7 @@ impl PartialEq for Rule {
 }
 
 pub fn read_rules() -> HashMap<String, Rule> {
-    let path = Path::new("rules.toml");
-
-    let mut file = match File::open(&path) {
+    let mut file = match File::open(Path::new("rules.toml")) {
         Err(_why) => panic!("couldn't open rule file"),
         Ok(file) => file,
     };
