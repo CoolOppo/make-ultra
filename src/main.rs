@@ -19,8 +19,8 @@ extern crate serde_regex;
 extern crate toml;
 
 use std::path::Path;
-use std::sync::Arc;
 use std::sync::mpsc::channel;
+use std::sync::Arc;
 
 use clap::{App, Arg};
 use hashbrown::hash_map::HashMap;
@@ -39,6 +39,7 @@ lazy_static! {
         RwLock::new(HashMap::new());
     static ref FILE_GRAPH: RwLock<StableDiGraph<Arc<String>, &'static rule::Rule>> =
         RwLock::new(StableDiGraph::new());
+    static ref DRY_RUN: bool = MATCHES.is_present("dry_run");
 }
 
 fn clap_setup() -> clap::ArgMatches<'static> {
@@ -105,12 +106,11 @@ fn main() {
             // Get all nodes with no inputs (roots)
             (incoming_count == 0
                 || incoming_count == 1
-                && g.neighbors_directed(*n, petgraph::Direction::Incoming)
-                .next()
-                .unwrap()
-                == *n)
+                    && g.neighbors_directed(*n, petgraph::Direction::Incoming)
+                        .next()
+                        .unwrap()
+                        == *n)
         }) {
-            println!("{}", g[i]);
             s.spawn(move |_| {
                 run_commands(i);
             });
@@ -122,35 +122,52 @@ fn run_commands(node: petgraph::prelude::NodeIndex) {
     rayon::scope(move |_| {
         use petgraph::visit::EdgeRef;
         use rayon::iter::ParallelBridge;
+        use std::fs;
         use std::process::Command;
+        use std::time::Duration;
         let g = FILE_GRAPH.read();
+        let files = FILES.read();
+        let last_modified = fs::metadata(&*g[node]).unwrap().modified().unwrap();
         g.edges_directed(node, petgraph::Direction::Outgoing)
             .par_bridge()
             .for_each(|edge| {
-                let g = FILE_GRAPH.read();
-                let files = FILES.read();
-                let command = (edge.weight().command.replace("$i", &*g[node]))
-                    .replace("$o", &*g[petgraph::visit::EdgeRef::target(&edge)]);
-                println!("{}", command);
-                if !MATCHES.is_present("dry_run") {
-                    if cfg!(target_os = "windows") {
-                        let out = Command::new("cmd")
-                            .args(&["/C", &command])
-                            .output()
-                            .unwrap_or_else(|_| panic!("Failed to execute {}", command));
-                        if !out.stderr.is_empty() {
-                            println!("{}", std::str::from_utf8(&out.stderr).unwrap());
+                let mut should_run_command = false;
+                if let Ok(target_metadata) = fs::metadata(&*g[edge.target()]) {
+                    if let Ok(target_last_modified) = target_metadata.modified() {
+                        if let Ok(duration_since) =
+                            last_modified.duration_since(target_last_modified)
+                        {
+                            if duration_since > Duration::new(1, 0) {
+                                should_run_command = true;
+                            }
                         }
-                    } else {
-                        let out = Command::new("sh")
-                            .arg("-c")
-                            .arg(&command)
-                            .output()
-                            .unwrap_or_else(|_| panic!("Failed to execute {}", command));
-                        if !out.stderr.is_empty() {
-                            println!("{}", std::str::from_utf8(&out.stderr).unwrap());
-                        }
-                    };
+                    }
+                }
+
+                if should_run_command {
+                    let command = (edge.weight().command.replace("$i", &*g[node]))
+                        .replace("$o", &*g[petgraph::visit::EdgeRef::target(&edge)]);
+                    println!("{}", command);
+                    if !*DRY_RUN {
+                        if cfg!(target_os = "windows") {
+                            let out = Command::new("cmd")
+                                .args(&["/C", &command])
+                                .output()
+                                .unwrap_or_else(|_| panic!("Failed to execute {}", command));
+                            if !out.stderr.is_empty() {
+                                println!("{}", std::str::from_utf8(&out.stderr).unwrap());
+                            }
+                        } else {
+                            let out = Command::new("sh")
+                                .arg("-c")
+                                .arg(&command)
+                                .output()
+                                .unwrap_or_else(|_| panic!("Failed to execute {}", command));
+                            if !out.stderr.is_empty() {
+                                println!("{}", std::str::from_utf8(&out.stderr).unwrap());
+                            }
+                        };
+                    }
                 }
                 if edge.source() != edge.target() {
                     run_commands(*files.get(&*g[edge.target()]).unwrap());

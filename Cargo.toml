@@ -6,11 +6,11 @@ edition = "2018"
 
 [dependencies]
 clap = "2.32.0"
-hashbrown = {version = "0.1.8", features = ["nightly"]}
+hashbrown = {version = "0.1.8"}
 ignore = "0.4.6"
 lazy_static = "1.2.0"
 maplit = "1.0.1"
-parking_lot = {version = "0.7.1", features = ["nightly"]}
+parking_lot = {version = "0.7.1"}
 petgraph = "0.4.13"
 rayon = "1.0.3"
 regex = "1.1.0"
