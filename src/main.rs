@@ -127,21 +127,38 @@ fn run_commands(node: petgraph::prelude::NodeIndex) {
         use std::time::Duration;
         let g = FILE_GRAPH.read();
         let files = FILES.read();
-        let last_modified = fs::metadata(&*g[node]).unwrap().modified().unwrap();
+
+        let last_modified = if let Ok(metadata) = fs::metadata(&*g[node]) {
+            if let Ok(modified) = metadata.modified() {
+                Some(modified)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
         g.edges_directed(node, petgraph::Direction::Outgoing)
             .par_bridge()
             .for_each(|edge| {
                 let mut should_run_command = false;
-                if let Ok(target_metadata) = fs::metadata(&*g[edge.target()]) {
-                    if let Ok(target_last_modified) = target_metadata.modified() {
-                        if let Ok(duration_since) =
-                            last_modified.duration_since(target_last_modified)
-                        {
-                            if duration_since > Duration::new(1, 0) {
-                                should_run_command = true;
+                if let Some(last_modified) = last_modified {
+                    if let Ok(target_metadata) = fs::metadata(&*g[edge.target()]) {
+                        if let Ok(target_last_modified) = target_metadata.modified() {
+                            if let Ok(duration_since) =
+                                last_modified.duration_since(target_last_modified)
+                            {
+                                if duration_since > Duration::new(1, 0) {
+                                    should_run_command = true;
+                                }
                             }
+                        } else {
+                            should_run_command = true;
                         }
+                    } else {
+                        should_run_command = true;
                     }
+                } else {
+                    should_run_command = true;
                 }
 
                 if should_run_command {
