@@ -6,7 +6,7 @@ I needed something faster than Grunt and Gulp that had a simpler syntax than Mak
 ### Better than the Rest  
 1. It doesn't require you to explicitly state dependencies.
 2. In-place modification of files is supported.
-	a. While this is possible with Make, it is [sort-of hacky](https://www.gnu.org/software/make/manual/make.html#Empty-Targets).
+	- *While this is possible with Make, it is [sort-of hacky](https://www.gnu.org/software/make/manual/make.html#Empty-Targets).*
 3. Rules use regex to match file patterns.
 
 Check out the following rule file:
