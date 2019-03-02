@@ -58,7 +58,12 @@ lazy_static! {
             None
         }
     };
-    static ref NEW_HASHES: RwLock<HashMap<String, u64>> = RwLock::new(HashMap::new());
+    static ref NEW_HASHES: RwLock<HashMap<String, u64>> =
+        if let Some(hashes) = SAVED_HASHES.as_ref() {
+            RwLock::new(hashes.clone())
+        } else {
+            RwLock::new(HashMap::new())
+        };
 }
 
 fn clap_setup() -> clap::ArgMatches<'static> {

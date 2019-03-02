@@ -1,6 +1,5 @@
-use std::{collections::HashMap, error::Error, fs::File, io::Read, path::Path};
-
 use regex::Regex;
+use std::{collections::HashMap, error::Error, fs::File, io::Read, path::Path, process::exit};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Rule {
@@ -42,13 +41,21 @@ impl PartialEq for Rule {
 pub fn read_rules() -> HashMap<String, Rule> {
     let path = Path::new("rules.toml");
     let mut file = match File::open(&path) {
-        Err(_why) => panic!("couldn't open rule file"),
+        Err(_why) => {
+            println!("ERROR: Couldn't open rule file");
+            exit(1);
+        }
         Ok(file) => file,
     };
 
     let mut s = String::new();
     if let Err(why) = file.read_to_string(&mut s) {
-        panic!("couldn't read {}: {}", path.display(), why.description())
+        println!(
+            "ERROR: Couldn't read {}: {}",
+            path.display(),
+            why.description()
+        );
+        exit(1);
     };
 
     toml::from_str(&s).unwrap()
