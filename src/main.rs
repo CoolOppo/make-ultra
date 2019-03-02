@@ -18,44 +18,70 @@ extern crate serde_derive;
 extern crate serde_regex;
 extern crate toml;
 
-use std::path::Path;
-use std::sync::mpsc::channel;
-use std::sync::Arc;
-
+use bincode::{deserialize, serialize};
 use clap::{App, Arg};
-use hashbrown::hash_map::HashMap;
 use ignore::WalkBuilder;
 use parking_lot::RwLock;
 use petgraph::stable_graph::StableDiGraph;
 use rayon::prelude::*;
+use std::{
+    collections::{hash_map::DefaultHasher, HashMap},
+    fs,
+    hash::Hasher,
+    path::Path,
+    sync::{mpsc::channel, Arc},
+};
+use std::io::Error;
 
 mod rule;
 
 lazy_static! {
     static ref MATCHES: clap::ArgMatches<'static> = { clap_setup() };
-    static ref RULES: std::collections::HashMap<std::string::String, rule::Rule> =
-        rule::read_rules();
-    static ref FILES: RwLock<HashMap<Arc<String>, petgraph::prelude::NodeIndex>> =
+    static ref RULES: HashMap<std::string::String, rule::Rule> = rule::read_rules();
+    static ref FILES: RwLock<std::collections::HashMap<Arc<String>, petgraph::prelude::NodeIndex>> =
         RwLock::new(HashMap::new());
     static ref FILE_GRAPH: RwLock<StableDiGraph<Arc<String>, &'static rule::Rule>> =
         RwLock::new(StableDiGraph::new());
     static ref DRY_RUN: bool = MATCHES.is_present("dry_run");
+    static ref DOT: bool = MATCHES.is_present("dot");
+    static ref FORCE: bool = MATCHES.is_present("force");
+    static ref CACHE_PATH: String = String::from(".make_cache");
+    static ref SAVED_HASHES: Option<HashMap<String, u64>> = {
+        if let Ok(cache_file) = fs::read(*CACHE_PATH) {
+            if let Ok(hashes) = deserialize(&cache_file) {
+                Some(hashes)
+            } else {
+                println!("Invalid .make_cache file");
+                None
+            }
+        } else {
+            None
+        }
+    };
+    static ref NEW_HASHES: RwLock<HashMap<String, u64>> = RwLock::new(HashMap::new());
 }
 
 fn clap_setup() -> clap::ArgMatches<'static> {
     App::new("make_ultra")
         .arg(
             Arg::with_name("dry_run")
-                .help("Print commands, but do not run them.")
+                .help("Print commands, but do not run them")
                 .long("dry")
                 .short("n"),
         )
         .arg(
             Arg::with_name("dot")
-                .help("Print dot graph to file.")
+                .help("Prints dot graph to file")
                 .long("dot")
                 .short("d")
                 .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("force")
+                .help("Force running on all files")
+                .long("force")
+                .short("f")
+                .takes_value(false),
         )
         .get_matches()
 }
@@ -87,10 +113,9 @@ fn main() {
             });
         }
     });
-    if MATCHES.is_present("dot") {
+    if *DOT {
         use petgraph::dot::{Config, Dot};
-        use std::fs::File;
-        use std::io::Write;
+        use std::{fs::File, io::Write};
         let fg = FILE_GRAPH.read();
 
         let mut file = File::create(Path::new(MATCHES.value_of("dot").unwrap())).unwrap();
@@ -106,64 +131,59 @@ fn main() {
             // Get all nodes with no inputs (roots)
             (incoming_count == 0
                 || incoming_count == 1
-                    && g.neighbors_directed(*n, petgraph::Direction::Incoming)
-                        .next()
-                        .unwrap()
-                        == *n)
+                && g.neighbors_directed(*n, petgraph::Direction::Incoming)
+                .next()
+                .unwrap()
+                == *n)
         }) {
             s.spawn(move |_| {
                 run_commands(i);
             });
         }
     });
+
+    let new_hashes = NEW_HASHES.write();
+    if new_hashes.len() > 0 {
+        fs::write(*CACHE_PATH, serialize(new_hashes));
+    }
 }
 
 fn run_commands(node: petgraph::prelude::NodeIndex) {
     rayon::scope(move |_| {
         use petgraph::visit::EdgeRef;
         use rayon::iter::ParallelBridge;
-        use std::fs;
         use std::process::Command;
-        use std::time::Duration;
         let g = FILE_GRAPH.read();
         let files = FILES.read();
 
-        let last_modified = if let Ok(metadata) = fs::metadata(&*g[node]) {
-            if let Ok(modified) = metadata.modified() {
-                Some(modified)
-            } else {
-                None
-            }
-        } else {
-            None
-        };
         g.edges_directed(node, petgraph::Direction::Outgoing)
             .par_bridge()
             .for_each(|edge| {
-                let mut should_run_command = false;
-                if let Some(last_modified) = last_modified {
-                    if let Ok(target_metadata) = fs::metadata(&*g[edge.target()]) {
-                        if let Ok(target_last_modified) = target_metadata.modified() {
-                            if let Ok(duration_since) =
-                                last_modified.duration_since(target_last_modified)
-                            {
-                                if duration_since > Duration::new(1, 0) {
-                                    should_run_command = true;
-                                }
-                            }
+                let source_path = &*g[node];
+                let target_path = &*g[edge.target()];
+                let should_run_command = if *FORCE {
+                    true
+                } else if let Some(old_hashes) = SAVED_HASHES.as_ref() {
+                    if let Some(saved_hash) = old_hashes.get(source_path) {
+                        if let Ok(current_hash) = file_hash(source_path) {
+                            current_hash != *saved_hash
                         } else {
-                            should_run_command = true;
+                            println!("WARNING: Could not read `{}`. Treating as if dirty.",
+                                     source_path);
+                            true
                         }
                     } else {
-                        should_run_command = true;
+                        // No saved hash for this file
+                        true
                     }
                 } else {
-                    should_run_command = true;
-                }
+                    // No saved hashes at all
+                    true
+                };
 
                 if should_run_command {
-                    let command = (edge.weight().command.replace("$i", &*g[node]))
-                        .replace("$o", &*g[petgraph::visit::EdgeRef::target(&edge)]);
+                    let command = (edge.weight().command.replace("$i", source_path))
+                        .replace("$o", target_path);
                     println!("{}", command);
                     if !*DRY_RUN {
                         if cfg!(target_os = "windows") {
@@ -184,13 +204,28 @@ fn run_commands(node: petgraph::prelude::NodeIndex) {
                                 println!("{}", std::str::from_utf8(&out.stderr).unwrap());
                             }
                         };
+                        if let Ok(new_hash) = file_hash(target_path)
+                        {
+                            let mut new_hashes = NEW_HASHES.write();
+                            new_hashes.insert(target_path.clone(), new_hash);
+                        } else {
+                            println!("WARNING: Unable to read `{}` to find its new hash.",
+                                     target_path);
+                        }
                     }
                 }
                 if edge.source() != edge.target() {
-                    run_commands(*files.get(&*g[edge.target()]).unwrap());
+                    run_commands(*files.get(target_path).unwrap());
                 }
             });
     });
+}
+
+fn file_hash(path: &str) -> Result<u64, Error<>> {
+    let file_bytes = fs::read(path)?;
+    let mut hasher = DefaultHasher::new();
+    hasher.write(&file_bytes);
+    Ok(hasher.finish())
 }
 
 /// Adds `path` to the DAG if it was not already in it, then recursively adds

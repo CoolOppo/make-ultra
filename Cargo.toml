@@ -5,6 +5,7 @@ authors = ["CoolOppo <CoolOppo@users.noreply.github.com>"]
 edition = "2018"
 
 [dependencies]
+bincode = "1.1.2"
 clap = "2.32.0"
 hashbrown = {version = "0.1.8"}
 ignore = "0.4.6"

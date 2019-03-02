@@ -1,8 +1,4 @@
-use std::collections::HashMap;
-use std::error::Error;
-use std::fs::File;
-use std::io::Read;
-use std::path::Path;
+use std::{collections::HashMap, error::Error, fs::File, io::Read, path::Path};
 
 use regex::Regex;
 
@@ -65,8 +61,7 @@ mod tests {
         #![allow(clippy::trivial_regex)]
         use crate::rule::Rule;
         use regex::Regex;
-        use std::fs::File;
-        use std::io::Write;
+        use std::{fs::File, io::Write};
         let rules = hashmap! {
             String::from("minify")=> Rule {
                 from: Regex::new("(?P<name>.*)\\.js$").unwrap(),
