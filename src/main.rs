@@ -28,10 +28,10 @@ use std::{
     collections::{hash_map::DefaultHasher, HashMap},
     fs,
     hash::Hasher,
+    io::Error,
     path::Path,
     sync::{mpsc::channel, Arc},
 };
-use std::io::Error;
 
 mod rule;
 
@@ -47,7 +47,7 @@ lazy_static! {
     static ref FORCE: bool = MATCHES.is_present("force");
     static ref CACHE_PATH: String = String::from(".make_cache");
     static ref SAVED_HASHES: Option<HashMap<String, u64>> = {
-        if let Ok(cache_file) = fs::read(*CACHE_PATH) {
+        if let Ok(cache_file) = fs::read(&*CACHE_PATH) {
             if let Ok(hashes) = deserialize(&cache_file) {
                 Some(hashes)
             } else {
@@ -131,10 +131,10 @@ fn main() {
             // Get all nodes with no inputs (roots)
             (incoming_count == 0
                 || incoming_count == 1
-                && g.neighbors_directed(*n, petgraph::Direction::Incoming)
-                .next()
-                .unwrap()
-                == *n)
+                    && g.neighbors_directed(*n, petgraph::Direction::Incoming)
+                        .next()
+                        .unwrap()
+                        == *n)
         }) {
             s.spawn(move |_| {
                 run_commands(i);
@@ -142,9 +142,11 @@ fn main() {
         }
     });
 
-    let new_hashes = NEW_HASHES.write();
-    if new_hashes.len() > 0 {
-        fs::write(*CACHE_PATH, serialize(new_hashes));
+    let new_hashes = &*NEW_HASHES.write();
+    if !new_hashes.is_empty() {
+        let serialized_hashes = serialize(new_hashes).expect("Unable to serialize new hashes.");
+        fs::write(&*CACHE_PATH, serialized_hashes)
+            .unwrap_or_else(|_| panic!("Unable to save serialized hashes to `{}`.", &*CACHE_PATH));
     }
 }
 
@@ -168,8 +170,10 @@ fn run_commands(node: petgraph::prelude::NodeIndex) {
                         if let Ok(current_hash) = file_hash(source_path) {
                             current_hash != *saved_hash
                         } else {
-                            println!("WARNING: Could not read `{}`. Treating as if dirty.",
-                                     source_path);
+                            println!(
+                                "WARNING: Could not read `{}`. Treating as if dirty.",
+                                source_path
+                            );
                             true
                         }
                     } else {
@@ -204,13 +208,14 @@ fn run_commands(node: petgraph::prelude::NodeIndex) {
                                 println!("{}", std::str::from_utf8(&out.stderr).unwrap());
                             }
                         };
-                        if let Ok(new_hash) = file_hash(target_path)
-                        {
+                        if let Ok(new_hash) = file_hash(target_path) {
                             let mut new_hashes = NEW_HASHES.write();
                             new_hashes.insert(target_path.clone(), new_hash);
                         } else {
-                            println!("WARNING: Unable to read `{}` to find its new hash.",
-                                     target_path);
+                            println!(
+                                "WARNING: Unable to read `{}` to find its new hash.",
+                                target_path
+                            );
                         }
                     }
                 }
@@ -221,7 +226,7 @@ fn run_commands(node: petgraph::prelude::NodeIndex) {
     });
 }
 
-fn file_hash(path: &str) -> Result<u64, Error<>> {
+fn file_hash(path: &str) -> Result<u64, Error> {
     let file_bytes = fs::read(path)?;
     let mut hasher = DefaultHasher::new();
     hasher.write(&file_bytes);
