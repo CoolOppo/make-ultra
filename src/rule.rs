@@ -1,5 +1,6 @@
+use hashbrown::HashMap;
 use regex::Regex;
-use std::{collections::HashMap, error::Error, fs::File, io::Read, path::Path, process::exit};
+use std::{error::Error, fs::File, io::Read, path::Path, process::exit};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Rule {

@@ -20,14 +20,14 @@ extern crate toml;
 
 use bincode::{deserialize, serialize};
 use clap::{App, Arg};
+use hashbrown::{hash_map::DefaultHashBuilder, HashMap};
 use ignore::WalkBuilder;
 use parking_lot::RwLock;
 use petgraph::stable_graph::StableDiGraph;
 use rayon::prelude::*;
 use std::{
-    collections::{hash_map::DefaultHasher, HashMap},
     fs,
-    hash::Hasher,
+    hash::{BuildHasher, Hasher},
     io::Error,
     path::Path,
     sync::{mpsc::channel, Arc},
@@ -38,7 +38,7 @@ mod rule;
 lazy_static! {
     static ref MATCHES: clap::ArgMatches<'static> = { clap_setup() };
     static ref RULES: HashMap<std::string::String, rule::Rule> = rule::read_rules();
-    static ref FILES: RwLock<std::collections::HashMap<Arc<String>, petgraph::prelude::NodeIndex>> =
+    static ref FILES: RwLock<HashMap<Arc<String>, petgraph::prelude::NodeIndex>> =
         RwLock::new(HashMap::new());
     static ref FILE_GRAPH: RwLock<StableDiGraph<Arc<String>, &'static rule::Rule>> =
         RwLock::new(StableDiGraph::new());
@@ -233,7 +233,7 @@ fn run_commands(node: petgraph::prelude::NodeIndex) {
 
 fn file_hash(path: &str) -> Result<u64, Error> {
     let file_bytes = fs::read(path)?;
-    let mut hasher = DefaultHasher::new();
+    let mut hasher = DefaultHashBuilder::default().build_hasher();
     hasher.write(&file_bytes);
     Ok(hasher.finish())
 }
