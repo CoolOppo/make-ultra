@@ -268,18 +268,18 @@ fn generate_children(path: String) {
                             if path != &new_file {
                                 should_update_children = true;
                             }
-                        let mut file_graph = FILE_GRAPH.write();
-                        let new_file = Arc::new(new_file.clone());
-                        let file_node = file_graph.add_node(Arc::clone(&new_file));
-                        files.insert(Arc::clone(&new_file), file_node);
-                        file_node
-                    };
+                            let mut file_graph = FILE_GRAPH.write();
+                            let new_file = Arc::new(new_file.clone());
+                            let file_node = file_graph.add_node(Arc::clone(&new_file));
+                            files.insert(Arc::clone(&new_file), file_node);
+                            file_node
+                        };
 
-                    {
-                        let mut file_graph = FILE_GRAPH.write();
-                        file_graph.update_edge(node, new_file_node, rule);
+                        {
+                            let mut file_graph = FILE_GRAPH.write();
+                            file_graph.update_edge(node, new_file_node, rule);
+                        }
                     }
-                }
 
                     if should_update_children {
                         generate_children(new_file);
