@@ -139,6 +139,7 @@ fn main() {
                         .unwrap()
                         == *n)
         }) {
+            update_hash(&*g[i]);
             s.spawn(move |_| {
                 run_commands(i);
             });
@@ -211,15 +212,7 @@ fn run_commands(node: petgraph::prelude::NodeIndex) {
                                 println!("{}", std::str::from_utf8(&out.stderr).unwrap());
                             }
                         };
-                        if let Ok(new_hash) = file_hash(target_path) {
-                            let mut new_hashes = NEW_HASHES.write();
-                            new_hashes.insert(target_path.clone(), new_hash);
-                        } else {
-                            println!(
-                                "WARNING: Unable to read `{}` to find its new hash.",
-                                target_path
-                            );
-                        }
+                        update_hash(target_path);
                     }
                 }
                 if edge.source() != edge.target() {
@@ -234,6 +227,15 @@ fn file_hash(path: &str) -> Result<u64, Error> {
     let mut hasher = DefaultHashBuilder::default().build_hasher();
     hasher.write(&file_bytes);
     Ok(hasher.finish())
+}
+
+fn update_hash(path: &str) {
+    if let Ok(new_hash) = file_hash(path) {
+        let mut new_hashes = NEW_HASHES.write();
+        new_hashes.insert(path.to_string(), new_hash);
+    } else {
+        println!("WARNING: Unable to read `{}` to find its hash.", path);
+    }
 }
 
 /// Adds `path` to the DAG if it was not already in it, then recursively adds
