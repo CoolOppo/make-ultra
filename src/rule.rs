@@ -14,8 +14,8 @@ pub struct Rule {
 }
 
 impl Rule {
-    pub fn get_output(&self, path: &str) -> String {
-        String::from(self.from.replace_all(path, &*self.to))
+    pub fn get_output<'a>(&self, path: &'a str) -> std::borrow::Cow<'a, str> {
+        self.from.replace_all(path, &*self.to)
     }
 
     pub fn does_match(&self, path: &str) -> bool {

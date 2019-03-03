@@ -1,25 +1,19 @@
 #![warn(clippy::all)]
+#![allow(unused_variables, dead_code)]
+#![feature(vec_remove_item)]
 
-extern crate clap;
-extern crate hashbrown;
-extern crate ignore;
 #[macro_use]
 extern crate lazy_static;
+
 #[allow(unused_imports)] // The warning is WRONG!
 #[macro_use]
 extern crate maplit;
-extern crate parking_lot;
-extern crate petgraph;
-extern crate rayon;
-extern crate regex;
-extern crate serde;
 #[macro_use]
 extern crate serde_derive;
-extern crate serde_regex;
-extern crate toml;
 
 use bincode::{deserialize, serialize};
 use clap::{App, Arg};
+use crossbeam::channel::unbounded;
 use hashbrown::{hash_map::DefaultHashBuilder, HashMap};
 use ignore::WalkBuilder;
 use parking_lot::RwLock;
@@ -30,10 +24,12 @@ use std::{
     hash::{BuildHasher, Hasher},
     io::Error,
     path::Path,
-    sync::{mpsc::channel, Arc},
+    sync::Arc,
 };
 
 mod rule;
+
+const CACHE_PATH: &str = ".make_cache";
 
 lazy_static! {
     static ref MATCHES: clap::ArgMatches<'static> = { clap_setup() };
@@ -45,13 +41,12 @@ lazy_static! {
     static ref DRY_RUN: bool = MATCHES.is_present("dry_run");
     static ref DOT: bool = MATCHES.is_present("dot");
     static ref FORCE: bool = MATCHES.is_present("force");
-    static ref CACHE_PATH: String = String::from(".make_cache");
     static ref SAVED_HASHES: Option<HashMap<String, u64>> = {
-        if let Ok(cache_file) = fs::read(&*CACHE_PATH) {
+        if let Ok(cache_file) = fs::read(CACHE_PATH) {
             if let Ok(hashes) = deserialize(&cache_file) {
                 Some(hashes)
             } else {
-                println!("Invalid .make_cache file");
+                println!("Invalid {} file", CACHE_PATH);
                 None
             }
         } else {
@@ -60,7 +55,12 @@ lazy_static! {
     };
     static ref NEW_HASHES: RwLock<HashMap<String, u64>> =
         if let Some(hashes) = SAVED_HASHES.as_ref() {
-            RwLock::new(hashes.clone())
+            // Regenerate cache if running a force build
+            if !*FORCE {
+                RwLock::new(hashes.clone())
+            } else {
+                RwLock::new(HashMap::new())
+            }
         } else {
             RwLock::new(HashMap::new())
         };
@@ -92,7 +92,7 @@ fn clap_setup() -> clap::ArgMatches<'static> {
 }
 
 fn main() {
-    let (tx, rx) = channel();
+    let (tx, rx) = unbounded();
     WalkBuilder::new(Path::new("."))
         .standard_filters(false)
         .build_parallel()
@@ -133,7 +133,7 @@ fn main() {
             let incoming_count = g
                 .neighbors_directed(*n, petgraph::Direction::Incoming)
                 .count();
-            // Get all nodes with no inputs (roots)
+            // Get all root nodes
             (incoming_count == 0
                 || incoming_count == 1
                     && g.neighbors_directed(*n, petgraph::Direction::Incoming)
@@ -150,8 +150,8 @@ fn main() {
     let new_hashes = &*NEW_HASHES.write();
     if !new_hashes.is_empty() {
         let serialized_hashes = serialize(new_hashes).expect("Unable to serialize new hashes.");
-        fs::write(&*CACHE_PATH, serialized_hashes)
-            .unwrap_or_else(|_| panic!("Unable to save serialized hashes to `{}`.", &*CACHE_PATH));
+        fs::write(CACHE_PATH, serialized_hashes)
+            .unwrap_or_else(|_| panic!("Unable to save serialized hashes to `{}`.", CACHE_PATH));
     }
 }
 
@@ -260,7 +260,7 @@ fn generate_children(path: String) {
                             file_node
                         };
 
-                        new_file = rule.get_output(&path);
+                        new_file = rule.get_output(&path).to_string();
 
                         let new_file_node = if let Some(node_index) = files.get(&new_file) {
                             *node_index
@@ -268,18 +268,18 @@ fn generate_children(path: String) {
                             if path != &new_file {
                                 should_update_children = true;
                             }
-                            let mut file_graph = FILE_GRAPH.write();
-                            let new_file = Arc::new(new_file.clone());
-                            let file_node = file_graph.add_node(Arc::clone(&new_file));
-                            files.insert(Arc::clone(&new_file), file_node);
-                            file_node
-                        };
+                        let mut file_graph = FILE_GRAPH.write();
+                        let new_file = Arc::new(new_file.clone());
+                        let file_node = file_graph.add_node(Arc::clone(&new_file));
+                        files.insert(Arc::clone(&new_file), file_node);
+                        file_node
+                    };
 
-                        {
-                            let mut file_graph = FILE_GRAPH.write();
-                            file_graph.update_edge(node, new_file_node, rule);
-                        }
+                    {
+                        let mut file_graph = FILE_GRAPH.write();
+                        file_graph.update_edge(node, new_file_node, rule);
                     }
+                }
 
                     if should_update_children {
                         generate_children(new_file);
