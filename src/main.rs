@@ -1,6 +1,4 @@
 #![warn(clippy::all)]
-#![allow(unused_variables, dead_code)]
-#![feature(vec_remove_item)]
 
 #[macro_use]
 extern crate lazy_static;

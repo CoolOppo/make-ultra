@@ -6,7 +6,10 @@ chat.js
 chat.min.js
 chat.min.js.gz
 chat.min.js.br
+test.dot
+
 .make_cache
 rules.toml
-test.dot
 /.vscode
+.sublime-project
+.sublime-workspace
