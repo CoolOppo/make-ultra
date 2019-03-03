@@ -11,5 +11,5 @@ test.dot
 .make_cache
 rules.toml
 /.vscode
-.sublime-project
-.sublime-workspace
+*.sublime-project
+*.sublime-workspace
