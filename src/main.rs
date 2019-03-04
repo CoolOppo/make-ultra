@@ -1,4 +1,8 @@
 #![warn(clippy::all)]
+#![feature(const_string_new)]
+
+#[macro_use]
+extern crate cached;
 
 #[macro_use]
 extern crate lazy_static;
@@ -133,7 +137,7 @@ fn main() {
                 .count();
             // Get all root nodes
             (incoming_count == 0
-                || incoming_count == 1
+                || incoming_count == 1 // Nodes that only have an input from themselves are also roots.
                     && g.neighbors_directed(*n, petgraph::Direction::Incoming)
                         .next()
                         .unwrap()
@@ -190,28 +194,25 @@ fn run_commands(node: petgraph::prelude::NodeIndex) {
                 };
 
                 if should_run_command {
-                    let command = (edge.weight().command.replace("$i", source_path))
-                        .replace("$o", target_path);
-                    println!("{}", command);
+                    let full_command = split_command(edge.weight().command);
+                    let program = full_command[0];
+                    let args = {
+                        let mut args = Vec::new();
+                        for arg in full_command.into_iter().skip(1) {
+                            args.push(arg.replace("$i", source_path).replace("$o", target_path));
+                        }
+                        args
+                    };
+
+                    println!("{} {}", program, args.join(" "));
                     if !*DRY_RUN {
-                        if cfg!(target_os = "windows") {
-                            let out = Command::new("cmd")
-                                .args(&["/C", &command])
-                                .output()
-                                .unwrap_or_else(|_| panic!("Failed to execute {}", command));
-                            if !out.stderr.is_empty() {
-                                println!("{}", std::str::from_utf8(&out.stderr).unwrap());
-                            }
-                        } else {
-                            let out = Command::new("sh")
-                                .arg("-c")
-                                .arg(&command)
-                                .output()
-                                .unwrap_or_else(|_| panic!("Failed to execute {}", command));
-                            if !out.stderr.is_empty() {
-                                println!("{}", std::str::from_utf8(&out.stderr).unwrap());
-                            }
-                        };
+                        let out = Command::new(program)
+                            .args(&args)
+                            .output()
+                            .unwrap_or_else(|_| panic!("Failed to execute {} {}", program, args.join(" ")));
+                        if !out.stderr.is_empty() {
+                            println!("{}", std::str::from_utf8(&out.stderr).unwrap());
+                        }
                         update_hash(target_path);
                     }
                 }
@@ -227,6 +228,17 @@ fn file_hash(path: &str) -> Result<u64, Error> {
     let mut hasher = DefaultHashBuilder::default().build_hasher();
     hasher.write(&file_bytes);
     Ok(hasher.finish())
+}
+
+cached! {
+    COMMAND;
+    fn split_command(command: &'static str) -> Vec<&'static str> = {
+        let mut out = Vec::new();
+        for piece in command.split_whitespace(){
+            out.push(piece);
+        }
+        out
+    }
 }
 
 fn update_hash(path: &str) {

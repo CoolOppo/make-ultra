@@ -10,7 +10,7 @@ pub struct Rule {
     #[serde(with = "serde_regex")]
     #[serde(default)]
     pub exclude: Option<Regex>,
-    pub command: String,
+    pub command: &'static str,
 }
 
 impl Rule {
@@ -48,18 +48,20 @@ pub fn read_rules() -> HashMap<String, Rule> {
         }
         Ok(file) => file,
     };
+    
+    static mut S: String = { String::new() };
+    unsafe {
+        if let Err(why) = file.read_to_string(&mut S) {
+            println!(
+                "ERROR: Couldn't read {}: {}",
+                path.display(),
+                why.description()
+            );
+            exit(1);
+        };
 
-    let mut s = String::new();
-    if let Err(why) = file.read_to_string(&mut s) {
-        println!(
-            "ERROR: Couldn't read {}: {}",
-            path.display(),
-            why.description()
-        );
-        exit(1);
-    };
-
-    toml::from_str(&s).unwrap()
+        toml::from_str(&S).unwrap()
+    }
 }
 
 #[cfg(test)]
@@ -74,13 +76,13 @@ mod tests {
             String::from("minify")=> Rule {
                 from: Regex::new("(?P<name>.*)\\.js$").unwrap(),
                 to: String::from("$name.min.js"),
-                command: String::from("terser $i -o $o"),
+                command: "terser $i -o $o",
                 exclude: Some(Regex::new("\\.min\\.js$").unwrap()),
             },
             String::from("brotli") => Rule {
                 from: Regex::new("(?P<name>.*)\\.min\\.js$").unwrap(),
                 to: String::from("$name.min.js.br"),
-                command: String::from("brotli -f $i"),
+                command: "brotli -f $i",
                 exclude: None,
             }
         };
