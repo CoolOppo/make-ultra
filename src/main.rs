@@ -151,7 +151,7 @@ fn main() {
     });
 
     let new_hashes = &*NEW_HASHES.write();
-    if !new_hashes.is_empty() {
+    if !new_hashes.is_empty() && !*DRY_RUN {
         let serialized_hashes = serialize(new_hashes).expect("Unable to serialize new hashes.");
         fs::write(CACHE_PATH, serialized_hashes)
             .unwrap_or_else(|_| panic!("Unable to save serialized hashes to `{}`.", CACHE_PATH));
