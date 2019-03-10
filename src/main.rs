@@ -198,7 +198,7 @@ fn run_commands(node: petgraph::prelude::NodeIndex) {
                     let program = full_command[0];
                     let args = {
                         let mut args = Vec::new();
-                        for arg in full_command.into_iter().skip(1) {
+                        for arg in full_command.iter().skip(1) {
                             args.push(arg.replace("$i", source_path).replace("$o", target_path));
                         }
                         args
@@ -206,12 +206,29 @@ fn run_commands(node: petgraph::prelude::NodeIndex) {
 
                     println!("{} {}", program, args.join(" "));
                     if !*DRY_RUN {
-                        let out = Command::new(program)
-                            .args(&args)
-                            .output()
-                            .unwrap_or_else(|_| panic!("Failed to execute {} {}", program, args.join(" ")));
-                        if !out.stderr.is_empty() {
-                            println!("{}", std::str::from_utf8(&out.stderr).unwrap());
+                        if cfg!(target_os = "windows") {
+                            let out = Command::new("cmd")
+                                .arg("/C")
+                                .arg(program)
+                                .args(&args)
+                                .output()
+                                .unwrap_or_else(|_| {
+                                    panic!("Failed to execute {} {}", program, args.join(" "))
+                                });
+                            if !out.stderr.is_empty() {
+                                println!("{}", std::str::from_utf8(&out.stderr).unwrap());
+                            }
+                        } else {
+                            let out =
+                                Command::new(program)
+                                    .args(&args)
+                                    .output()
+                                    .unwrap_or_else(|_| {
+                                        panic!("Failed to execute {} {}", program, args.join(" "))
+                                    });
+                            if !out.stderr.is_empty() {
+                                println!("{}", std::str::from_utf8(&out.stderr).unwrap());
+                            }
                         }
                         update_hash(target_path);
                     }
