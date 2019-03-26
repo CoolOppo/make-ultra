@@ -1,0 +1,14 @@
+# https://github.com/rust-lang/rustfmt/blob/master/Configurations.md
+condense_wildcard_suffixes = true
+format_strings = true
+format_macro_matchers = true
+merge_imports = true
+reorder_impl_items = true
+use_field_init_shorthand = true
+use_try_shorthand = true
+format_doc_comments = true
+wrap_comments = true
+unstable_features = true
+edition = "2018"
+version = "Two"
+normalize_doc_attributes = true
