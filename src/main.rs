@@ -19,6 +19,7 @@ use crossbeam::channel::unbounded;
 use hashbrown::{hash_map::DefaultHashBuilder, HashMap};
 use ignore::WalkBuilder;
 use parking_lot::RwLock;
+use petgraph::prelude::*;
 use petgraph::stable_graph::StableDiGraph;
 use rayon::prelude::*;
 use std::{
@@ -36,7 +37,7 @@ const CACHE_PATH: &str = ".make_cache";
 lazy_static! {
     static ref MATCHES: clap::ArgMatches<'static> = { clap_setup() };
     static ref RULES: HashMap<std::string::String, rule::Rule> = rule::read_rules();
-    static ref FILES: RwLock<HashMap<Arc<String>, petgraph::prelude::NodeIndex>> =
+    static ref FILES: RwLock<HashMap<Arc<String>, NodeIndex>> =
         RwLock::new(HashMap::new());
     static ref FILE_GRAPH: RwLock<StableDiGraph<Arc<String>, &'static rule::Rule>> =
         RwLock::new(StableDiGraph::new());
@@ -166,7 +167,7 @@ fn main() {
     }
 }
 
-fn run_commands(node: petgraph::prelude::NodeIndex) {
+fn run_commands(node: NodeIndex) {
     rayon::scope(move |_| {
         use petgraph::visit::EdgeRef;
         use rayon::iter::ParallelBridge;
