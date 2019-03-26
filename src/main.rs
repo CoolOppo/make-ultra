@@ -94,26 +94,34 @@ fn clap_setup() -> clap::ArgMatches<'static> {
 }
 
 fn main() {
-    let (tx, rx) = unbounded();
-    WalkBuilder::new(Path::new("."))
-        .standard_filters(false)
-        .build_parallel()
-        .run(move || {
-            let tx = tx.clone();
-            Box::new(move |entry| {
-                let entry = match entry {
-                    Err(_) => {
-                        return ignore::WalkState::Continue;
-                    }
-                    Ok(e) => e,
-                };
-                let path = entry.path().to_owned();
-                let p = String::from(path.to_string_lossy());
-                tx.send(p).unwrap();
-                ignore::WalkState::Continue
-            })
-        });
     rayon::scope(move |s| {
+        let (tx, rx) = unbounded();
+        s.spawn(move |_| {
+            WalkBuilder::new(Path::new("."))
+                .standard_filters(false)
+                .build_parallel()
+                .run(move || {
+                    let tx = tx.clone();
+                    Box::new(move |entry| {
+                        let entry = match entry {
+                            Err(_) => {
+                                return ignore::WalkState::Continue;
+                            }
+                            Ok(e) => e,
+                        };
+                        let path = entry
+                            .path()
+                            .to_str()
+                            .unwrap_or_else(|| {
+                                panic!("\"{}\" is not UTF-8", entry.path().to_string_lossy())
+                            })
+                            .to_string();
+                        tx.send(path).unwrap();
+                        ignore::WalkState::Continue
+                    })
+                });
+        });
+
         for path in rx.iter() {
             s.spawn(move |_| {
                 generate_children(path);
