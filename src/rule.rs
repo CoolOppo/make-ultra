@@ -48,7 +48,7 @@ pub fn read_rules() -> HashMap<String, Rule> {
         }
         Ok(file) => file,
     };
-    
+
     static mut S: String = { String::new() };
     unsafe {
         if let Err(why) = file.read_to_string(&mut S) {

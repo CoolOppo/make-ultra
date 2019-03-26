@@ -19,8 +19,7 @@ use crossbeam::channel::unbounded;
 use hashbrown::{hash_map::DefaultHashBuilder, HashMap};
 use ignore::WalkBuilder;
 use parking_lot::RwLock;
-use petgraph::prelude::*;
-use petgraph::stable_graph::StableDiGraph;
+use petgraph::{prelude::*, stable_graph::StableDiGraph};
 use rayon::prelude::*;
 use std::{
     fs,
