@@ -94,6 +94,7 @@ fn clap_setup() -> clap::ArgMatches<'static> {
 }
 
 fn main() {
+    lazy_static::initialize(&MATCHES);
     rayon::scope(move |s| {
         let (tx, rx) = unbounded();
         s.spawn(move |_| {
