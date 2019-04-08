@@ -21,10 +21,11 @@ use ignore::WalkBuilder;
 use parking_lot::RwLock;
 use petgraph::{prelude::*, stable_graph::StableDiGraph};
 use rayon::prelude::*;
+use snap;
 use std::{
-    fs,
+    fs::{self, File},
     hash::{BuildHasher, Hasher},
-    io::Error,
+    io::{Error, Read, Write},
     path::Path,
     sync::Arc,
 };
@@ -37,35 +38,52 @@ lazy_static! {
     static ref MATCHES: clap::ArgMatches<'static> = { clap_setup() };
     static ref RULES: HashMap<std::string::String, rule::Rule> = rule::read_rules();
     static ref FILES: RwLock<HashMap<Arc<String>, NodeIndex>> =
-        RwLock::new(HashMap::new());
+    RwLock::new(HashMap::new());
     static ref FILE_GRAPH: RwLock<StableDiGraph<Arc<String>, &'static rule::Rule>> =
-        RwLock::new(StableDiGraph::new());
+    RwLock::new(StableDiGraph::new());
     static ref DRY_RUN: bool = MATCHES.is_present("dry_run");
     static ref DOT: bool = MATCHES.is_present("dot");
     static ref FORCE: bool = MATCHES.is_present("force");
     static ref SAVED_HASHES: Option<HashMap<String, u64>> = {
-        if let Ok(cache_file) = fs::read(CACHE_PATH) {
-            if let Ok(hashes) = deserialize(&cache_file) {
-                Some(hashes)
+        if let Ok(cache_file) = File::open(CACHE_PATH) {
+            let mut reader = snap::Reader::new(cache_file);
+            let mut bytes = Vec::new();
+            if let Ok(_p) = reader.read_to_end(&mut bytes) {
+                if let Ok(hashes) = deserialize(&bytes) {
+                    Some(hashes)
+                } else {
+                    println!("Invalid {} file", CACHE_PATH);
+                    None
+                }
+            } else if let Ok(bytes) = fs::read(CACHE_PATH) {
+                if let Ok(hashes) = deserialize(&bytes) {
+                    println!("Reading old cache file format.");
+                    Some(hashes)
+                } else {
+                    println!("Invalid {} file", CACHE_PATH);
+                    None
+                }
             } else {
                 println!("Invalid {} file", CACHE_PATH);
                 None
             }
         } else {
+
+
             None
         }
     };
     static ref NEW_HASHES: RwLock<HashMap<String, u64>> =
-        if let Some(hashes) = SAVED_HASHES.as_ref() {
-            // Regenerate cache if running a force build
-            if !*FORCE {
-                RwLock::new(hashes.clone())
-            } else {
-                RwLock::new(HashMap::new())
-            }
+    if let Some(hashes) = SAVED_HASHES.as_ref() {
+        // Regenerate cache if running a force build
+        if !*FORCE {
+            RwLock::new(hashes.clone())
         } else {
             RwLock::new(HashMap::new())
-        };
+        }
+    } else {
+        RwLock::new(HashMap::new())
+    };
 }
 
 fn clap_setup() -> clap::ArgMatches<'static> {
@@ -147,10 +165,10 @@ fn main() {
             // Get all root nodes
             (incoming_count == 0
                 || incoming_count == 1 // Nodes that only have an input from themselves are also roots.
-                    && g.neighbors_directed(*n, petgraph::Direction::Incoming)
-                        .next()
-                        .unwrap()
-                        == *n)
+                && g.neighbors_directed(*n, petgraph::Direction::Incoming)
+                .next()
+                .unwrap()
+                == *n)
         }) {
             update_hash(&*g[i]);
             s.spawn(move |_| {
@@ -162,8 +180,11 @@ fn main() {
     let new_hashes = &*NEW_HASHES.write();
     if !new_hashes.is_empty() && !*DRY_RUN {
         let serialized_hashes = serialize(new_hashes).expect("Unable to serialize new hashes.");
-        fs::write(CACHE_PATH, serialized_hashes)
-            .unwrap_or_else(|_| panic!("Unable to save serialized hashes to `{}`.", CACHE_PATH));
+        let out_file = File::create(CACHE_PATH).unwrap();
+        let mut writer = snap::Writer::new(out_file);
+        writer
+            .write_all(&serialized_hashes)
+            .expect("Unable to save cache file.");
     }
 }
 
