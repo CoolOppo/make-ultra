@@ -189,34 +189,36 @@ fn run_commands(node: NodeIndex) {
         let g = FILE_GRAPH.read();
         let files = FILES.read();
 
+        let source_path = &*g[node];
+        let should_run_command = if *FORCE {
+            true
+        } else if let Some(old_hashes) = SAVED_HASHES.as_ref() {
+            if let Some(saved_hash) = old_hashes.get(source_path) {
+                if let Ok(current_hash) = file_hash(source_path) {
+                    current_hash != *saved_hash
+                } else {
+                    println!(
+                        "WARNING: Could not read `{}`. Treating as if dirty.",
+                        source_path
+                    );
+                    true
+                }
+            } else {
+                // No saved hash for this file
+                update_hash(source_path);
+                true
+            }
+        } else {
+            // No saved hashes at all
+            update_hash(source_path);
+            true
+        };
+
         g.edges_directed(node, Outgoing)
             .par_bridge()
             .for_each(|edge| {
-                let source_path = &*g[node];
                 let target_path = &*g[edge.target()];
-                let should_run_command = if *FORCE {
-                    true
-                } else if let Some(old_hashes) = SAVED_HASHES.as_ref() {
-                    if let Some(saved_hash) = old_hashes.get(source_path) {
-                        if let Ok(current_hash) = file_hash(source_path) {
-                            current_hash != *saved_hash
-                        } else {
-                            println!(
-                                "WARNING: Could not read `{}`. Treating as if dirty.",
-                                source_path
-                            );
-                            true
-                        }
-                    } else {
-                        // No saved hash for this file
-                        update_hash(source_path);
-                        true
-                    }
-                } else {
-                    // No saved hashes at all
-                    update_hash(source_path);
-                    true
-                };
+
 
                 if should_run_command {
                     let full_command = split_command(edge.weight().command);
