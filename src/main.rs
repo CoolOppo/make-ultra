@@ -36,14 +36,14 @@ const CACHE_PATH: &str = ".make_cache";
 
 lazy_static! {
     static ref MATCHES: clap::ArgMatches<'static> = { clap_setup() };
-    static ref RULES: HashMap<std::string::String, rule::Rule> = rule::read_rules();
-    static ref FILES: RwLock<HashMap<Arc<String>, NodeIndex>> =
-    RwLock::new(HashMap::new());
-    static ref FILE_GRAPH: RwLock<StableDiGraph<Arc<String>, &'static rule::Rule>> =
-    RwLock::new(StableDiGraph::new());
-    static ref DRY_RUN: bool = MATCHES.is_present("dry_run");
     static ref DOT: bool = MATCHES.is_present("dot");
+    static ref DRY_RUN: bool = MATCHES.is_present("dry_run");
     static ref FORCE: bool = MATCHES.is_present("force");
+
+    static ref RULES: HashMap<std::string::String, rule::Rule> = rule::read_rules();
+    static ref FILES: RwLock<HashMap<Arc<String>, NodeIndex>> = RwLock::new(HashMap::new());
+    static ref FILE_GRAPH: RwLock<StableDiGraph<Arc<String>, &'static rule::Rule>> = RwLock::new(StableDiGraph::new());
+
     static ref SAVED_HASHES: Option<HashMap<String, u64>> = {
         if let Ok(cache_file) = File::open(CACHE_PATH) {
             let mut reader = snap::Reader::new(cache_file);
@@ -68,11 +68,10 @@ lazy_static! {
                 None
             }
         } else {
-
-
             None
         }
     };
+
     static ref NEW_HASHES: RwLock<HashMap<String, u64>> =
     if let Some(hashes) = SAVED_HASHES.as_ref() {
         // Regenerate cache if running a force build
@@ -113,6 +112,7 @@ fn clap_setup() -> clap::ArgMatches<'static> {
 
 fn main() {
     lazy_static::initialize(&MATCHES);
+
     rayon::scope(move |s| {
         let (tx, rx) = unbounded();
         s.spawn(move |_| {
@@ -212,6 +212,7 @@ fn run_commands(node: NodeIndex) {
                             true
                         }
                     } else {
+
                         // No saved hash for this file
                         true
                     }
@@ -294,52 +295,61 @@ fn update_hash(path: &str) {
     }
 }
 
+fn get_matching_rules<'a, 'b>(path: &'a str) -> Vec<&'b rule::Rule> {
+    let mut out = Vec::new();
+    for rule in RULES.values() {
+        if rule.does_match(&path) {
+            out.push(rule);
+        }
+    }
+    out
+}
+
 /// Adds `path` to the DAG if it was not already in it, then recursively adds
 /// all children that did not exist yet to the DAG as well.
 fn generate_children(path: String) {
+    let matching_rules = get_matching_rules(&path);
     rayon::scope(|s| {
-        for rule in RULES.values() {
+        for rule in matching_rules.iter() {
             let path = &path;
             s.spawn(move |_| {
-                if rule.does_match(&path) {
-                    let mut new_file: String;
-                    let mut should_update_children = false;
-                    {
-                        let mut files = FILES.write();
-                        let node = if let Some(node_index) = files.get(path) {
-                            *node_index
-                        } else {
-                            let mut file_graph = FILE_GRAPH.write();
-                            let path = Arc::new(path.clone());
-                            let file_node = file_graph.add_node(Arc::clone(&path));
-                            files.insert(Arc::clone(&path), file_node);
-                            file_node
-                        };
+                let mut new_file: String;
+                let mut should_update_children = false;
+                {
+                    let mut files = FILES.write();
+                    let node = if let Some(node_index) = files.get(path) {
+                        *node_index
+                    } else {
+                        let mut file_graph = FILE_GRAPH.write();
+                        let path = Arc::new(path.clone());
+                        let file_node = file_graph.add_node(Arc::clone(&path));
+                        files.insert(Arc::clone(&path), file_node);
+                        file_node
+                    };
 
-                        new_file = rule.get_output(&path).to_string();
+                    new_file = rule.get_output(&path).to_string();
 
-                        let new_file_node = if let Some(node_index) = files.get(&new_file) {
-                            *node_index
-                        } else {
-                            if path != &new_file {
-                                should_update_children = true;
-                            }
-                            let mut file_graph = FILE_GRAPH.write();
-                            let new_file = Arc::new(new_file.clone());
-                            let file_node = file_graph.add_node(Arc::clone(&new_file));
-                            files.insert(Arc::clone(&new_file), file_node);
-                            file_node
-                        };
-
-                        {
-                            let mut file_graph = FILE_GRAPH.write();
-                            file_graph.update_edge(node, new_file_node, rule);
+                    let new_file_node = if let Some(node_index) = files.get(&new_file) {
+                        *node_index
+                    } else {
+                        if path != &new_file {
+                            should_update_children = true;
                         }
-                    }
+                        let mut file_graph = FILE_GRAPH.write();
+                        let new_file = Arc::new(new_file.clone());
+                        let file_node = file_graph.add_node(Arc::clone(&new_file));
+                        files.insert(Arc::clone(&new_file), file_node);
+                        file_node
+                    };
 
-                    if should_update_children {
-                        generate_children(new_file);
+                    {
+                        let mut file_graph = FILE_GRAPH.write();
+                        file_graph.update_edge(node, new_file_node, rule);
                     }
+                }
+
+                if should_update_children {
+                    generate_children(new_file);
                 }
             });
         }
