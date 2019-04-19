@@ -52,19 +52,19 @@ lazy_static! {
                 if let Ok(hashes) = deserialize(&bytes) {
                     Some(hashes)
                 } else {
-                    println!("Invalid {} file", CACHE_PATH);
+                    println!("WARNING: Invalid {} file", CACHE_PATH);
                     None
                 }
             } else if let Ok(bytes) = fs::read(CACHE_PATH) {
                 if let Ok(hashes) = deserialize(&bytes) {
-                    println!("Reading old cache file format.");
+                    println!("INFO: Reading old cache file format.");
                     Some(hashes)
                 } else {
-                    println!("Invalid {} file", CACHE_PATH);
+                    println!("WARNING: Invalid {} file", CACHE_PATH);
                     None
                 }
             } else {
-                println!("Invalid {} file", CACHE_PATH);
+                println!("WARNING: Invalid {} file", CACHE_PATH);
                 None
             }
         } else {
@@ -212,7 +212,6 @@ fn run_commands(node: NodeIndex) {
                             true
                         }
                     } else {
-
                         // No saved hash for this file
                         true
                     }
@@ -295,7 +294,7 @@ fn update_hash(path: &str) {
     }
 }
 
-fn get_matching_rules<'a, 'b>(path: &'a str) -> Vec<&'b rule::Rule> {
+fn get_matching_rules<'a>(path: &'a str) -> Vec<&'static rule::Rule> {
     let mut out = Vec::new();
     for rule in RULES.values() {
         if rule.does_match(&path) {
@@ -310,12 +309,29 @@ fn get_matching_rules<'a, 'b>(path: &'a str) -> Vec<&'b rule::Rule> {
 fn generate_children(path: String) {
     let matching_rules = get_matching_rules(&path);
     rayon::scope(|s| {
+        let matching_rules = &matching_rules;
         for rule in matching_rules.iter() {
             let path = &path;
             s.spawn(move |_| {
                 let mut new_file: String;
                 let mut should_update_children = false;
                 {
+                    new_file = rule.get_output(&path).to_string();
+
+                    // "Smart" rule exclusion.
+                    // Imagine we have a rule that would match *.js, turning it into *.min.js.
+                    // Now imagine we have another rule that does something to *.min.js files.
+                    // Given the file a.min.js, we need to be able to determine that only the
+                    // *.min.js rule should run:
+                    {
+                        if matching_rules.len() > 1 {
+                            let new_file_rules = get_matching_rules(&new_file);
+                            if new_file_rules.eq(matching_rules) {
+                                return;
+                            }
+                        }
+                    }
+
                     let mut files = FILES.write();
                     let node = if let Some(node_index) = files.get(path) {
                         *node_index
@@ -326,8 +342,6 @@ fn generate_children(path: String) {
                         files.insert(Arc::clone(&path), file_node);
                         file_node
                     };
-
-                    new_file = rule.get_output(&path).to_string();
 
                     let new_file_node = if let Some(node_index) = files.get(&new_file) {
                         *node_index
