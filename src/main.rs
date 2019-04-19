@@ -149,7 +149,6 @@ fn main() {
     });
     if *DOT {
         use petgraph::dot::{Config, Dot};
-        use std::{fs::File, io::Write};
         let fg = FILE_GRAPH.read();
 
         let mut file = File::create(Path::new(MATCHES.value_of("dot").unwrap())).unwrap();
@@ -190,8 +189,6 @@ fn main() {
 
 fn run_commands(node: NodeIndex) {
     rayon::scope(move |_| {
-        use petgraph::visit::EdgeRef;
-        use rayon::iter::ParallelBridge;
         use std::process::Command;
         let g = FILE_GRAPH.read();
         let files = FILES.read();
