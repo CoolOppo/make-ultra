@@ -158,18 +158,15 @@ fn main() {
     rayon::scope(move |s| {
         let g = FILE_GRAPH.read();
         for i in g.node_indices().filter(|n| {
-            let incoming_count = g
-                .neighbors_directed(*n, petgraph::Direction::Incoming)
-                .count();
+            let incoming_count = g.neighbors_directed(*n, Incoming).count();
             // Get all root nodes
             (incoming_count == 0
                 || incoming_count == 1 // Nodes that only have an input from themselves are also roots.
-                && g.neighbors_directed(*n, petgraph::Direction::Incoming)
+                && g.neighbors_directed(*n, Incoming)
                 .next()
                 .unwrap()
                 == *n)
         }) {
-            update_hash(&*g[i]);
             s.spawn(move |_| {
                 run_commands(i);
             });
@@ -189,11 +186,10 @@ fn main() {
 
 fn run_commands(node: NodeIndex) {
     rayon::scope(move |_| {
-        use std::process::Command;
         let g = FILE_GRAPH.read();
         let files = FILES.read();
 
-        g.edges_directed(node, petgraph::Direction::Outgoing)
+        g.edges_directed(node, Outgoing)
             .par_bridge()
             .for_each(|edge| {
                 let source_path = &*g[node];
@@ -213,10 +209,12 @@ fn run_commands(node: NodeIndex) {
                         }
                     } else {
                         // No saved hash for this file
+                        update_hash(source_path);
                         true
                     }
                 } else {
                     // No saved hashes at all
+                    update_hash(source_path);
                     true
                 };
 
@@ -233,6 +231,7 @@ fn run_commands(node: NodeIndex) {
 
                     println!("{} {}", program, args.join(" "));
                     if !*DRY_RUN {
+                        use std::process::Command;
                         if cfg!(target_os = "windows") {
                             let out = Command::new("cmd")
                                 .arg("/C")
