@@ -7,7 +7,7 @@ extern crate cached;
 #[macro_use]
 extern crate lazy_static;
 
-#[allow(unused_imports)] // The warning is WRONG!
+#[allow(unused_imports)] // maplit is used in rule.rs
 #[macro_use]
 extern crate maplit;
 #[macro_use]
@@ -147,6 +147,7 @@ fn main() {
             });
         }
     });
+
     if *DOT {
         use petgraph::dot::{Config, Dot};
         let fg = FILE_GRAPH.read();
@@ -155,18 +156,11 @@ fn main() {
         file.write_all(format!("{:?}", Dot::with_config(&*fg, &[Config::EdgeNoLabel])).as_bytes())
             .unwrap();
     }
+
     rayon::scope(move |s| {
         let g = FILE_GRAPH.read();
-        for i in g.node_indices().filter(|n| {
-            let incoming_count = g.neighbors_directed(*n, Incoming).count();
-            // Get all root nodes
-            (incoming_count == 0
-                || incoming_count == 1 // Nodes that only have an input from themselves are also roots.
-                && g.neighbors_directed(*n, Incoming)
-                .next()
-                .unwrap()
-                == *n)
-        }) {
+
+        for i in g.node_indices().filter(|n| is_root_node(&g, *n)) {
             s.spawn(move |_| {
                 run_commands(i);
             });
@@ -182,6 +176,16 @@ fn main() {
             .write_all(&serialized_hashes)
             .expect("Unable to save cache file.");
     }
+}
+
+fn is_root_node<N, E>(g: &StableGraph<N, E>, n: NodeIndex) -> bool {
+    let incoming_count = g.neighbors_directed(n, Incoming).count();
+    (incoming_count == 0
+        || incoming_count == 1 // Nodes that only have an input from themselves are also roots.
+                && g.neighbors_directed(n, Incoming)
+                .next()
+                .unwrap()
+                == n)
 }
 
 fn run_commands(node: NodeIndex) {
@@ -218,7 +222,6 @@ fn run_commands(node: NodeIndex) {
             .par_bridge()
             .for_each(|edge| {
                 let target_path = &*g[edge.target()];
-
 
                 if should_run_command {
                     let full_command = split_command(edge.weight().command);
@@ -314,7 +317,7 @@ fn generate_children(path: String) {
         for rule in matching_rules.iter() {
             let path = &path;
             s.spawn(move |_| {
-                let mut new_file: String;
+                let new_file: String;
                 let mut should_update_children = false;
                 {
                     new_file = rule.get_output(&path).to_string();
