@@ -10,7 +10,7 @@ pub struct Rule {
     #[serde(with = "serde_regex")]
     #[serde(default)]
     pub exclude: Option<Regex>,
-    pub command: &'static str,
+    pub command: String,
 }
 
 impl Rule {
@@ -76,13 +76,13 @@ mod tests {
             String::from("minify")=> Rule {
                 from: Regex::new("(?P<name>.*)\\.js$").unwrap(),
                 to: String::from("$name.min.js"),
-                command: "terser $i -o $o",
+                command: "terser $i -o $o".to_string(),
                 exclude: Some(Regex::new("\\.min\\.js$").unwrap()),
             },
             String::from("brotli") => Rule {
                 from: Regex::new("(?P<name>.*)\\.min\\.js$").unwrap(),
                 to: String::from("$name.min.js.br"),
-                command: "brotli -f $i",
+                command: "brotli -f $i".to_string(),
                 exclude: None,
             }
         };

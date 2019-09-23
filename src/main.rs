@@ -1,4 +1,5 @@
 #![warn(clippy::all)]
+#![allow(dead_code)]
 #![feature(const_string_new)]
 
 #[macro_use]
@@ -10,6 +11,7 @@ extern crate lazy_static;
 #[allow(unused_imports)] // maplit is used in rule.rs
 #[macro_use]
 extern crate maplit;
+
 #[macro_use]
 extern crate serde_derive;
 
@@ -31,6 +33,9 @@ use std::{
 };
 
 mod rule;
+mod config;
+
+
 
 const CACHE_PATH: &str = ".make_cache";
 
@@ -224,7 +229,7 @@ fn run_commands(node: NodeIndex) {
                 let target_path = &*g[edge.target()];
 
                 if should_run_command {
-                    let full_command = split_command(edge.weight().command);
+                    let full_command = split_command(&edge.weight().command);
                     let program = full_command[0];
                     let args = {
                         let mut args = Vec::new();
