@@ -32,10 +32,8 @@ use std::{
     sync::Arc,
 };
 
-mod rule;
 mod config;
-
-
+mod rule;
 
 const CACHE_PATH: &str = ".make_cache";
 
@@ -45,7 +43,8 @@ lazy_static! {
     static ref DRY_RUN: bool = MATCHES.is_present("dry_run");
     static ref FORCE: bool = MATCHES.is_present("force");
 
-    static ref RULES: HashMap<std::string::String, rule::Rule> = rule::read_rules();
+    static ref CONFIG: config::Config = config::read_config();
+    static ref RULES: &'static Vec<rule::Rule> = &CONFIG.rules;
     static ref FILES: RwLock<HashMap<Arc<String>, NodeIndex>> = RwLock::new(HashMap::new());
     static ref FILE_GRAPH: RwLock<StableDiGraph<Arc<String>, &'static rule::Rule>> = RwLock::new(StableDiGraph::new());
 
@@ -305,7 +304,7 @@ fn update_hash(path: &str) {
 
 fn get_matching_rules<'a>(path: &'a str) -> Vec<&'static rule::Rule> {
     let mut out = Vec::new();
-    for rule in RULES.values() {
+    for rule in RULES.iter() {
         if rule.does_match(&path) {
             out.push(rule);
         }
