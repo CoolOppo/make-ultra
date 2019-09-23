@@ -4,7 +4,7 @@ Make Ultra is a task runner useful for running certain commands when your files 
 Check out the following rule file (written in [TOML](https://github.com/toml-lang/toml)):
 
 ```toml
-[minify]
+[[rule]]
 # rules use rusty regex: https://docs.rs/regex/*/regex/#syntax
 from = '(?P<name>.*)\.js$'
 to = '$name.min.js'
@@ -12,18 +12,18 @@ exclude = '\.min\.js$'
 # For all commands: $i = input file; $o = output file
 command = 'terser $i -o $o'
 
-[gzip]
+[[rule]]
 from = '(?P<name>.*)\.min\.js$'
 to = '$name.min.js.gz'
 command = 'zopfli $i'
 
-[brotli]
+[[rule]]
 from = '(?P<name>.*)\.min\.js$'
 to = '$name.min.js.br'
 command = 'brotli -f $i'
 
 # Optimize png files in-place, only re-running when you modify them:
-[png]
+[[rule]]
 from = '(?P<name>.*\.png)$'
 to = '$name'
 command = 'optipng -clobber -fix -quiet -strip all $i'
