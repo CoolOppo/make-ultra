@@ -4,6 +4,10 @@ Make Ultra is a task runner useful for running certain commands when your files 
 Check out the following rule file (written in [TOML](https://github.com/toml-lang/toml)):
 
 ```toml
+# saved as config.toml
+
+folders = ["Foo", "Bar"]
+
 [[rule]]
 # rules use rusty regex: https://docs.rs/regex/*/regex/#syntax
 from = '(?P<name>.*)\.js$'
