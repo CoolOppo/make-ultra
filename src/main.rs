@@ -218,13 +218,11 @@ fn run_commands(node: NodeIndex) {
                 }
             } else {
                 // No saved hash for this file
-                println!("New file: {}", source_path);
                 update_hash(source_path);
                 true
             }
         } else {
             // No saved hashes at all
-            println!("New file: {}", source_path);
             update_hash(source_path);
             true
         };
