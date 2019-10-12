@@ -1,17 +1,23 @@
 #![warn(clippy::all)]
-#![feature(const_string_new)]
+#![allow(dead_code)]
 
 #[macro_use]
 extern crate cached;
-
 #[macro_use]
 extern crate lazy_static;
-
 #[allow(unused_imports)] // maplit is used in rule.rs
 #[macro_use]
 extern crate maplit;
 #[macro_use]
 extern crate serde_derive;
+
+use std::{
+    fs::{self, File},
+    hash::{BuildHasher, Hasher},
+    io::{Read, Write},
+    path::Path,
+    sync::Arc,
+};
 
 use bincode::{deserialize, serialize};
 use clap::{App, Arg};
@@ -22,14 +28,8 @@ use parking_lot::RwLock;
 use petgraph::{prelude::*, stable_graph::StableDiGraph};
 use rayon::prelude::*;
 use snap;
-use std::{
-    fs::{self, File},
-    hash::{BuildHasher, Hasher},
-    io::{Error, Read, Write},
-    path::Path,
-    sync::Arc,
-};
 
+mod config;
 mod rule;
 
 const CACHE_PATH: &str = ".make_cache";
@@ -40,7 +40,8 @@ lazy_static! {
     static ref DRY_RUN: bool = MATCHES.is_present("dry_run");
     static ref FORCE: bool = MATCHES.is_present("force");
 
-    static ref RULES: HashMap<std::string::String, rule::Rule> = rule::read_rules();
+    static ref CONFIG: config::Config = config::read_config();
+    static ref RULES: &'static Vec<rule::Rule> = &CONFIG.rules;
     static ref FILES: RwLock<HashMap<Arc<String>, NodeIndex>> = RwLock::new(HashMap::new());
     static ref FILE_GRAPH: RwLock<StableDiGraph<Arc<String>, &'static rule::Rule>> = RwLock::new(StableDiGraph::new());
 
@@ -116,29 +117,31 @@ fn main() {
     rayon::scope(move |s| {
         let (tx, rx) = unbounded();
         s.spawn(move |_| {
-            WalkBuilder::new(Path::new("."))
-                .standard_filters(false)
-                .build_parallel()
-                .run(move || {
-                    let tx = tx.clone();
-                    Box::new(move |entry| {
-                        let entry = match entry {
-                            Err(_) => {
-                                return ignore::WalkState::Continue;
-                            }
-                            Ok(e) => e,
-                        };
-                        let path = entry
-                            .path()
-                            .to_str()
-                            .unwrap_or_else(|| {
-                                panic!("\"{}\" is not UTF-8", entry.path().to_string_lossy())
-                            })
-                            .to_string();
-                        tx.send(path).unwrap();
-                        ignore::WalkState::Continue
-                    })
-                });
+            for folder in &CONFIG.folders {
+                WalkBuilder::new(Path::new(folder))
+                    .standard_filters(false)
+                    .build_parallel()
+                    .run(|| {
+                        let tx = tx.clone();
+                        Box::new(move |entry| {
+                            let entry = match entry {
+                                Err(_) => {
+                                    return ignore::WalkState::Continue;
+                                }
+                                Ok(e) => e,
+                            };
+                            let path = entry
+                                .path()
+                                .to_str()
+                                .unwrap_or_else(|| {
+                                    panic!("\"{}\" is not UTF-8", entry.path().to_string_lossy())
+                                })
+                                .to_string();
+                            tx.send(path).unwrap();
+                            ignore::WalkState::Continue
+                        })
+                    });
+            }
         });
 
         for path in rx.iter() {
@@ -182,10 +185,10 @@ fn is_root_node<N, E>(g: &StableGraph<N, E>, n: NodeIndex) -> bool {
     let incoming_count = g.neighbors_directed(n, Incoming).count();
     (incoming_count == 0
         || incoming_count == 1 // Nodes that only have an input from themselves are also roots.
-                && g.neighbors_directed(n, Incoming)
-                .next()
-                .unwrap()
-                == n)
+        && g.neighbors_directed(n, Incoming)
+        .next()
+        .unwrap()
+        == n)
 }
 
 fn run_commands(node: NodeIndex) {
@@ -195,11 +198,17 @@ fn run_commands(node: NodeIndex) {
 
         let source_path = &*g[node];
         let should_run_command = if *FORCE {
+            update_hash(source_path);
             true
         } else if let Some(old_hashes) = SAVED_HASHES.as_ref() {
             if let Some(saved_hash) = old_hashes.get(source_path) {
-                if let Ok(current_hash) = file_hash(source_path) {
-                    current_hash != *saved_hash
+                if let Some(current_hash) = file_hash(source_path) {
+                    if current_hash != *saved_hash {
+                        insert_hash(source_path, current_hash);
+                        true
+                    } else {
+                        false
+                    }
                 } else {
                     println!(
                         "WARNING: Could not read `{}`. Treating as if dirty.",
@@ -209,11 +218,13 @@ fn run_commands(node: NodeIndex) {
                 }
             } else {
                 // No saved hash for this file
+                println!("New file: {}", source_path);
                 update_hash(source_path);
                 true
             }
         } else {
             // No saved hashes at all
+            println!("New file: {}", source_path);
             update_hash(source_path);
             true
         };
@@ -224,7 +235,7 @@ fn run_commands(node: NodeIndex) {
                 let target_path = &*g[edge.target()];
 
                 if should_run_command {
-                    let full_command = split_command(edge.weight().command);
+                    let full_command = split_command(&edge.weight().command);
                     let program = full_command[0];
                     let args = {
                         let mut args = Vec::new();
@@ -271,11 +282,34 @@ fn run_commands(node: NodeIndex) {
     });
 }
 
-fn file_hash(path: &str) -> Result<u64, Error> {
-    let file_bytes = fs::read(path)?;
-    let mut hasher = DefaultHashBuilder::default().build_hasher();
-    hasher.write(&file_bytes);
-    Ok(hasher.finish())
+/// Gets the hash for the file at the given path
+fn file_hash(path: &str) -> Option<u64> {
+    if let Ok(file_bytes) = fs::read(path) {
+        let mut hasher = DefaultHashBuilder::default().build_hasher();
+        hasher.write(&file_bytes);
+        Some(hasher.finish())
+    } else {
+        println!("ERROR: Could not read `{}`", path);
+        None
+    }
+}
+
+/// Inserts or overrides the hash for the given path in `NEW_HASHES`
+fn insert_hash(path: &str, new_hash: u64) {
+    let mut new_hashes = NEW_HASHES.write();
+    new_hashes.insert(path.to_string(), new_hash);
+}
+
+/// Generates the hash for the given path, inserting to or overriding the stored
+/// one in `NEW_HASHES`
+fn update_hash(path: &str) -> Option<u64> {
+    if let Some(new_hash) = file_hash(path) {
+        insert_hash(path, new_hash);
+        Some(new_hash)
+    } else {
+        println!("WARNING: Unable to read `{}` to find its hash.", path);
+        None
+    }
 }
 
 cached! {
@@ -289,18 +323,9 @@ cached! {
     }
 }
 
-fn update_hash(path: &str) {
-    if let Ok(new_hash) = file_hash(path) {
-        let mut new_hashes = NEW_HASHES.write();
-        new_hashes.insert(path.to_string(), new_hash);
-    } else {
-        println!("WARNING: Unable to read `{}` to find its hash.", path);
-    }
-}
-
 fn get_matching_rules<'a>(path: &'a str) -> Vec<&'static rule::Rule> {
     let mut out = Vec::new();
-    for rule in RULES.values() {
+    for rule in RULES.iter() {
         if rule.does_match(&path) {
             out.push(rule);
         }

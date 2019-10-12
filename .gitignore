@@ -10,7 +10,7 @@ chat.min.js.br
 test.dot
 
 .make_cache
-rules.toml
+config.toml
 /.vscode
 *.sublime-project
 *.sublime-workspace

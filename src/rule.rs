@@ -1,6 +1,4 @@
-use hashbrown::HashMap;
 use regex::Regex;
-use std::{error::Error, fs::File, io::Read, path::Path, process::exit};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Rule {
@@ -10,7 +8,7 @@ pub struct Rule {
     #[serde(with = "serde_regex")]
     #[serde(default)]
     pub exclude: Option<Regex>,
-    pub command: &'static str,
+    pub command: String,
 }
 
 impl Rule {
@@ -39,31 +37,6 @@ impl PartialEq for Rule {
     }
 }
 
-pub fn read_rules() -> HashMap<String, Rule> {
-    let path = Path::new("rules.toml");
-    let mut file = match File::open(&path) {
-        Err(_why) => {
-            println!("ERROR: Couldn't open rule file");
-            exit(1);
-        }
-        Ok(file) => file,
-    };
-
-    static mut S: String = { String::new() };
-    unsafe {
-        if let Err(why) = file.read_to_string(&mut S) {
-            println!(
-                "ERROR: Couldn't read {}: {}",
-                path.display(),
-                why.description()
-            );
-            exit(1);
-        };
-
-        toml::from_str(&S).unwrap()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     #[test]
@@ -76,13 +49,13 @@ mod tests {
             String::from("minify")=> Rule {
                 from: Regex::new("(?P<name>.*)\\.js$").unwrap(),
                 to: String::from("$name.min.js"),
-                command: "terser $i -o $o",
+                command: "terser $i -o $o".to_string(),
                 exclude: Some(Regex::new("\\.min\\.js$").unwrap()),
             },
             String::from("brotli") => Rule {
                 from: Regex::new("(?P<name>.*)\\.min\\.js$").unwrap(),
                 to: String::from("$name.min.js.br"),
-                command: "brotli -f $i",
+                command: "brotli -f $i".to_string(),
                 exclude: None,
             }
         };
