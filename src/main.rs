@@ -196,9 +196,14 @@ fn run_commands(node: NodeIndex) {
         let g = FILE_GRAPH.read();
         let files = FILES.read();
 
+        // We only care about the file's hash if other files are dependent on it
+        let should_save_hash = g.edges_directed(node, Outgoing).count() > 0;
+
         let source_path = &*g[node];
         let should_run_command = if *FORCE {
-            update_hash(source_path);
+            if should_save_hash {
+                update_hash(source_path);
+            }
             true
         } else if let Some(old_hashes) = SAVED_HASHES.as_ref() {
             if let Some(saved_hash) = old_hashes.get(source_path) {
@@ -210,20 +215,21 @@ fn run_commands(node: NodeIndex) {
                         false
                     }
                 } else {
-                    println!(
-                        "WARNING: Could not read `{}`. Treating as if dirty.",
-                        source_path
-                    );
-                    true
+                    println!("WARNING: Could not read `{}`.", source_path);
+                    false
                 }
             } else {
                 // No saved hash for this file
-                update_hash(source_path);
+                if should_save_hash {
+                    update_hash(source_path);
+                }
                 true
             }
         } else {
             // No saved hashes at all
-            update_hash(source_path);
+            if should_save_hash {
+                update_hash(source_path);
+            }
             true
         };
 
@@ -270,7 +276,6 @@ fn run_commands(node: NodeIndex) {
                                 println!("{}", std::str::from_utf8(&out.stderr).unwrap());
                             }
                         }
-                        update_hash(target_path);
                     }
                 }
                 if edge.source() != edge.target() {
@@ -321,7 +326,7 @@ cached! {
     }
 }
 
-fn get_matching_rules<'a>(path: &'a str) -> Vec<&'static rule::Rule> {
+fn get_matching_rules(path: &str) -> Vec<&'static rule::Rule> {
     let mut out = Vec::new();
     for rule in RULES.iter() {
         if rule.does_match(&path) {
@@ -346,16 +351,15 @@ fn generate_children(path: String) {
                     new_file = rule.get_output(&path).to_string();
 
                     // "Smart" rule exclusion.
+                    // TODO: Make recursive instead of only evaluating the child rules
                     // Imagine we have a rule that would match *.js, turning it into *.min.js.
                     // Now imagine we have another rule that does something to *.min.js files.
                     // Given the file a.min.js, we need to be able to determine that only the
                     // *.min.js rule should run:
-                    {
-                        if matching_rules.len() > 1 {
-                            let new_file_rules = get_matching_rules(&new_file);
-                            if new_file_rules.eq(matching_rules) {
-                                return;
-                            }
+                    if matching_rules.len() > 1 {
+                        let new_file_rules = get_matching_rules(&new_file);
+                        if new_file_rules.eq(matching_rules) {
+                            return;
                         }
                     }
 
