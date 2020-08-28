@@ -20,7 +20,7 @@ use std::{
 };
 
 use bincode::{deserialize, serialize};
-use clap::{App, Arg};
+use clap::{App, Arg, crate_version};
 use crossbeam::channel::unbounded;
 use hashbrown::{hash_map::DefaultHashBuilder, HashMap};
 use ignore::WalkBuilder;
@@ -106,7 +106,7 @@ fn clap_setup() -> clap::ArgMatches<'static> {
                 .long("force")
                 .short("f")
                 .takes_value(false),
-        )
+        ).version(crate_version!())
         .get_matches()
 }
 

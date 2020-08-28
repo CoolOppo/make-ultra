@@ -15,6 +15,7 @@ fn default_folders() -> Vec<String> {
 }
 
 pub fn read_config() -> Config {
-    let contents = fs::read_to_string("config.toml").expect("ERROR: Could not read config.toml.");
+    let contents =
+        fs::read_to_string("makeultra.toml").expect("ERROR: Could not read makeultra.toml.");
     toml::from_str(&contents).unwrap()
 }
