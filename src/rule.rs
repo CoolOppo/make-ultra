@@ -1,4 +1,5 @@
 use regex::Regex;
+use serde_derive::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Rule {
@@ -42,9 +43,12 @@ mod tests {
     #[test]
     fn generate_rules() {
         #![allow(clippy::trivial_regex)]
-        use crate::rule::Rule;
-        use regex::Regex;
         use std::{fs::File, io::Write};
+
+        use crate::rule::Rule;
+        use maplit::hashmap;
+        use regex::Regex;
+
         let rules = hashmap! {
             String::from("minify")=> Rule {
                 from: Regex::new("(?P<name>.*)\\.js$").unwrap(),

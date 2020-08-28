@@ -1,15 +1,4 @@
 #![warn(clippy::all)]
-#![allow(dead_code)]
-
-#[macro_use]
-extern crate cached;
-#[macro_use]
-extern crate lazy_static;
-#[allow(unused_imports)] // maplit is used in rule.rs
-#[macro_use]
-extern crate maplit;
-#[macro_use]
-extern crate serde_derive;
 
 use std::{
     fs::{self, File},
@@ -20,10 +9,12 @@ use std::{
 };
 
 use bincode::{deserialize, serialize};
-use clap::{App, Arg, crate_version};
+use cached::cached;
+use clap::{crate_version, App, Arg};
 use crossbeam::channel::unbounded;
 use hashbrown::{hash_map::DefaultHashBuilder, HashMap};
 use ignore::WalkBuilder;
+use lazy_static::lazy_static;
 use parking_lot::RwLock;
 use petgraph::{prelude::*, stable_graph::StableDiGraph};
 use rayon::prelude::*;
@@ -106,7 +97,8 @@ fn clap_setup() -> clap::ArgMatches<'static> {
                 .long("force")
                 .short("f")
                 .takes_value(false),
-        ).version(crate_version!())
+        )
+        .version(crate_version!())
         .get_matches()
 }
 
