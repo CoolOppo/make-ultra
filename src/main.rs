@@ -27,7 +27,6 @@ use ignore::WalkBuilder;
 use parking_lot::RwLock;
 use petgraph::{prelude::*, stable_graph::StableDiGraph};
 use rayon::prelude::*;
-use snap;
 
 mod config;
 mod rule;
@@ -35,7 +34,7 @@ mod rule;
 const CACHE_PATH: &str = ".make_cache";
 
 lazy_static! {
-    static ref MATCHES: clap::ArgMatches<'static> = { clap_setup() };
+    static ref MATCHES: clap::ArgMatches<'static> =  clap_setup() ;
     static ref DOT: bool = MATCHES.is_present("dot");
     static ref DRY_RUN: bool = MATCHES.is_present("dry_run");
     static ref FORCE: bool = MATCHES.is_present("force");
@@ -183,12 +182,12 @@ fn main() {
 
 fn is_root_node<N, E>(g: &StableGraph<N, E>, n: NodeIndex) -> bool {
     let incoming_count = g.neighbors_directed(n, Incoming).count();
-    (incoming_count == 0
+    incoming_count == 0
         || incoming_count == 1 // Nodes that only have an input from themselves are also roots.
         && g.neighbors_directed(n, Incoming)
         .next()
         .unwrap()
-        == n)
+        == n
 }
 
 fn run_commands(node: NodeIndex) {
@@ -201,35 +200,23 @@ fn run_commands(node: NodeIndex) {
 
         let source_path = &*g[node];
         let should_run_command = if *FORCE {
-            if should_save_hash {
-                update_hash(source_path);
-            }
             true
         } else if let Some(old_hashes) = SAVED_HASHES.as_ref() {
             if let Some(saved_hash) = old_hashes.get(source_path) {
                 if let Some(current_hash) = file_hash(source_path) {
-                    if current_hash != *saved_hash {
-                        insert_hash(source_path, current_hash);
-                        true
-                    } else {
-                        false
-                    }
+                    // If the current hash isn't the same as the saved one,
+                    // we should run the command and process the file:
+                    current_hash != *saved_hash
                 } else {
                     println!("WARNING: Could not read `{}`.", source_path);
                     false
                 }
             } else {
                 // No saved hash for this file
-                if should_save_hash {
-                    update_hash(source_path);
-                }
                 true
             }
         } else {
             // No saved hashes at all
-            if should_save_hash {
-                update_hash(source_path);
-            }
             true
         };
 
@@ -237,6 +224,7 @@ fn run_commands(node: NodeIndex) {
             .par_bridge()
             .for_each(|edge| {
                 let target_path = &*g[edge.target()];
+                let should_process_child;
 
                 if should_run_command {
                     let full_command = split_command(&edge.weight().command);
@@ -250,7 +238,9 @@ fn run_commands(node: NodeIndex) {
                     };
 
                     println!("{} {}", program, args.join(" "));
-                    if !*DRY_RUN {
+                    if *DRY_RUN {
+                        should_process_child = true;
+                    } else {
                         use std::process::Command;
                         if cfg!(target_os = "windows") {
                             let out = Command::new("cmd")
@@ -263,6 +253,9 @@ fn run_commands(node: NodeIndex) {
                                 });
                             if !out.stderr.is_empty() {
                                 println!("{}", std::str::from_utf8(&out.stderr).unwrap());
+                                should_process_child = false;
+                            } else {
+                                should_process_child = true;
                             }
                         } else {
                             let out =
@@ -274,11 +267,30 @@ fn run_commands(node: NodeIndex) {
                                     });
                             if !out.stderr.is_empty() {
                                 println!("{}", std::str::from_utf8(&out.stderr).unwrap());
+                                should_process_child = false;
+                            } else {
+                                should_process_child = true;
                             }
                         }
+                        if should_save_hash && should_process_child {
+                            //                 ^^^^^^^^^^^^^^^^^^^^
+                            // We should only update the hash if there was no
+                            // error. If we update the hash when an error
+                            // occurred, the command will not be rerun if
+                            // whatever caused the error on our user's end is
+                            // fixed, even though the output file was never
+                            // created.
+                            update_hash(source_path);
+                        }
                     }
+                } else if Path::exists(Path::new(target_path)) {
+                    // If we never run the command, our child may
+                    // still need commands run if it was modified
+                    should_process_child = true;
+                } else {
+                    should_process_child = false;
                 }
-                if edge.source() != edge.target() {
+                if edge.source() != edge.target() && should_process_child {
                     run_commands(*files.get(target_path).unwrap());
                 }
             });
