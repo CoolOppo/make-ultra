@@ -1,0 +1,55 @@
+folders = ["pub"]
+
+# minify js
+[[rule]]
+from = '(?P<name>.*)\.js$'
+to = '$name.js' # just keep the same name
+# to = '$name.min.js' # use this line to insert '.min'
+exclude = '\.min\.js$'
+command = 'terser $i -cmo $o'
+
+# compile scss
+[[rule]]
+from = '(?P<name>.*)\.scss$'
+to = '$name.css'
+command = 'sass --no-source-map $i:$o'
+
+# minify css
+[[rule]]
+from = '(?P<name>.*)\.css$'
+to = '$name.css' # keeps the same name like the js does
+exclude = '\.min\.css$'
+command = 'csso -i $i -o $o'
+
+[[rule]]
+from = '(?P<name>.*\.html)$'
+to = '$name'
+command = 'html-minifier --collapse-whitespace --remove-attribute-quotes --remove-comments --remove-redundant-attributes --remove-script-type-attributes --remove-tag-whitespace --use-short-doctype --remove-style-link-type-attributes --minify-css true --remove-script-type-attributes --minify-js true --sort-attributes --sort-class-name -o $o $i'
+
+# [[rule]]
+# from = '(?P<name>.*)\.min\.js$'
+# to = '$name.min.js.gz'
+# command = 'zopfli $i'
+
+# [[rule]]
+# from = '(?P<name>.*)\.min\.css$'
+# to = '$name.min.css.gz'
+# command = 'zopfli $i'
+
+# optimize jpeg with mozjpeg
+[[rule]]
+from = '(?P<name>.*)\.(?P<ext>((jpg)|(jpeg)){1})$'
+to = '$name.$ext'
+command = 'jpegtran -outfile $i $i'
+
+# optimize png with zopflipng
+[[rule]]
+from = '(?P<name>.*\.png)$'
+to = '$name'
+command = 'zopflipng -y --lossy_transparent $i $o'
+
+# optimize gif with gifsicle
+[[rule]]
+from = '(?P<name>.*\.gif)$'
+to = '$name'
+command = 'gifsicle -O3 -o $i $i'
