@@ -3,6 +3,11 @@ name = "make_ultra"
 version = "0.2.4"
 authors = ["CoolOppo <CoolOppo@users.noreply.github.com>"]
 edition = "2018"
+description = "A simple task-runner which tracks changes in files and runs commands based on rules in parallel."
+license = "MIT OR Apache-2.0 OR Unlicense"
+keywords = ["task", "build", "make"]
+categories = ["command-line-utilities", "development-tools::build-utils"]
+repository = "https://github.com/CoolOppo/make-ultra"
 
 [dependencies]
 bincode = "1.1.2"
